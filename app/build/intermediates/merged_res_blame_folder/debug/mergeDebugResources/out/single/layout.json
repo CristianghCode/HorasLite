@@ -1,0 +1,14 @@
+[
+    {
+        "merged": "C:\\Users\\Metaenlace\\.gradle\\daemon\\8.7\\com.horaslite.app-mergeDebugResources-30:\\layout\\activity_main.xml",
+        "source": "C:\\Users\\Metaenlace\\.gradle\\daemon\\8.7\\com.horaslite.app-main-33:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Metaenlace\\.gradle\\daemon\\8.7\\com.horaslite.app-mergeDebugResources-30:\\layout\\item_day.xml",
+        "source": "C:\\Users\\Metaenlace\\.gradle\\daemon\\8.7\\com.horaslite.app-main-33:\\layout\\item_day.xml"
+    },
+    {
+        "merged": "com.horaslite.app-mergeDebugResources-30:/layout/activity_main.xml",
+        "source": "com.horaslite.app-main-33:/layout/activity_main.xml"
+    }
+]
