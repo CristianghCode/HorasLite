@@ -235,16 +235,27 @@ class MainActivity : AppCompatActivity() {
                 val raw = prefs.getString("$weekId:intervals:$dayIndex", "[]") ?: continue
                 val arr = try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
 
+                var dayTotalMillis = 0L
+                var manualExtraMillis = 0L
+
                 for (j in 0 until arr.length()) {
                     val it = arr.getJSONObject(j)
                     val s = it.optInt("s", 0)
                     val e = it.optInt("e", 0)
                     val extra = it.optBoolean("extra", false)
                     val dur = max(0, e - s) * 60_000L
-                    monthTotalMillis += dur
-                    if (extra) monthExtrasMillis += dur
+                    dayTotalMillis += dur
+                    if (extra) manualExtraMillis += dur
                 }
+
+                val autoExtraMillis = if (dayTotalMillis > 8 * 60 * 60 * 1000L)
+                    (dayTotalMillis - 8 * 60 * 60 * 1000L)
+                else 0L
+
+                monthTotalMillis += dayTotalMillis
+                monthExtrasMillis += manualExtraMillis + autoExtraMillis
             }
+
 
             // Avanzamos a la siguiente semana
             tempCal.add(Calendar.WEEK_OF_YEAR, 1)
