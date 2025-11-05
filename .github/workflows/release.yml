@@ -1,0 +1,64 @@
+name: Build, Sign and Publish HorasLite
+
+on:
+  push:
+    tags:
+      - 'v*'  # se ejecuta solo al hacer push de un tag tipo v1.1 o v2.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release-key.jks
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build signed release APK
+        run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file=release-key.jks \
+          -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Generate update JSON
+        run: ./gradlew generateUpdateJson
+
+      - name: Copy JSON to docs/
+        run: |
+          mkdir -p docs
+          cp app/build/outputs/apk/release/horaslite-update.json docs/horaslite-update.json
+
+      - name: Commit and push JSON update
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git add docs/horaslite-update.json
+          git commit -m "Auto update JSON for $GITHUB_REF_NAME" || echo "No changes to commit"
+          git push origin master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/release/*.apk
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            HorasLite ${{ github.ref_name }}
+            - Versión generada automáticamente
+            - Firmada y subida desde GitHub Actions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
