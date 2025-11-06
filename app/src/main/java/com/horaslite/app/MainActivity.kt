@@ -4,9 +4,11 @@ import android.app.AlertDialog
 import android.app.TimePickerDialog
 import android.content.Context
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -14,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.horaslite.app.databinding.ActivityMainBinding
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -39,6 +42,11 @@ class MainActivity : AppCompatActivity() {
         binding.resetButton.setOnClickListener {
             resetWeek()
             populateDays()
+        }
+
+        binding.configureRatesButton.setOnClickListener {
+            val (year, month) = currentYearMonthForWeek()
+            showRatesDialog(year, month)
         }
 
         binding.prevWeekButton.setOnClickListener {
@@ -99,6 +107,8 @@ class MainActivity : AppCompatActivity() {
         var weeklyTotal = 0L
         var weeklyManualExtra = 0L
         var weeklyAutoExtra = 0L
+
+        val (targetYear, targetMonth) = currentYearMonthForWeek()
 
         for (i in 0 until 7) {
             val item = LayoutInflater.from(this).inflate(R.layout.item_day, container, false) as LinearLayout
@@ -197,9 +207,18 @@ class MainActivity : AppCompatActivity() {
 
         val weeklyTotalExtras = weeklyManualExtra + weeklyAutoExtra
         val weeklyNormal = weeklyTotal - weeklyTotalExtras
+        val (normalRate, extraRate) = getMonthlyRates(targetYear, targetMonth)
+        val weeklyNormalPay = durationToHours(weeklyNormal) * normalRate
+        val weeklyExtraPay = durationToHours(weeklyTotalExtras) * extraRate
+        val weeklyPayText = if (normalRate == 0.0 && extraRate == 0.0) {
+            getString(R.string.rates_hint_message)
+        } else {
+            "Ingresos: normales ${formatCurrency(weeklyNormalPay)}, extra ${formatCurrency(weeklyExtraPay)} (total ${formatCurrency(weeklyNormalPay + weeklyExtraPay)})"
+        }
         binding.summary.text = "${getString(R.string.normal_week)} ${formatDuration(weeklyNormal)}   " +
                 "${getString(R.string.extra_week)} ${formatDuration(weeklyTotalExtras)}   " +
-                "${getString(R.string.total_week)} ${formatDuration(weeklyTotal)}"
+                "${getString(R.string.total_week)} ${formatDuration(weeklyTotal)}\n" +
+                weeklyPayText
 
         updateMonthlySummary()
 
@@ -248,9 +267,7 @@ class MainActivity : AppCompatActivity() {
                     if (extra) manualExtraMillis += dur
                 }
 
-                val autoExtraMillis = if (dayTotalMillis > 8 * 60 * 60 * 1000L)
-                    (dayTotalMillis - 8 * 60 * 60 * 1000L)
-                else 0L
+                val autoExtraMillis = max(0L, (dayTotalMillis - manualExtraMillis) - 8 * 60 * 60 * 1000L)
 
                 monthTotalMillis += dayTotalMillis
                 monthExtrasMillis += manualExtraMillis + autoExtraMillis
@@ -262,6 +279,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         val normalMillis = monthTotalMillis - monthExtrasMillis
+        val (normalRate, extraRate) = getMonthlyRates(targetYear, targetMonth)
+        val normalPay = durationToHours(normalMillis) * normalRate
+        val extraPay = durationToHours(monthExtrasMillis) * extraRate
+        val totalPay = normalPay + extraPay
 
         if (monthTotalMillis > 0) {
             binding.monthlySummary.visibility = View.VISIBLE
@@ -275,9 +296,16 @@ class MainActivity : AppCompatActivity() {
                 else -> "🌼 Buen equilibrio, mamá."
             }
 
+            val paySummary = if (normalRate == 0.0 && extraRate == 0.0) {
+                getString(R.string.rates_hint_message)
+            } else {
+                "Ingresos: normales ${formatCurrency(normalPay)}, extra ${formatCurrency(extraPay)} (total ${formatCurrency(totalPay)})"
+            }
+
             binding.monthlySummary.text =
                 "$monthName: ${formatDuration(normalMillis)} normales, " +
                         "${formatDuration(monthExtrasMillis)} extra (total ${formatDuration(monthTotalMillis)})\n" +
+                        "$paySummary\n" +
                         mensajeCariñoso
 
         } else {
@@ -327,6 +355,86 @@ class MainActivity : AppCompatActivity() {
         arr.put(obj)
         saveIntervals(dayIndex, arr)
         populateDays()
+    }
+
+    private fun currentYearMonthForWeek(): Pair<Int, Int> {
+        val cal = Calendar.getInstance()
+        cal.firstDayOfWeek = Calendar.MONDAY
+        cal.add(Calendar.WEEK_OF_YEAR, weekOffset)
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        return cal.get(Calendar.YEAR) to cal.get(Calendar.MONTH)
+    }
+
+    private fun monthKey(year: Int, month: Int): String = String.format(Locale.US, "%04d-%02d", year, month + 1)
+
+    private fun getMonthlyRates(year: Int, month: Int): Pair<Double, Double> {
+        val key = monthKey(year, month)
+        val normal = prefs.getString("rate:$key:normal", null)?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+        val extra = prefs.getString("rate:$key:extra", null)?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+        return normal to extra
+    }
+
+    private fun saveMonthlyRates(year: Int, month: Int, normal: Double, extra: Double) {
+        val key = monthKey(year, month)
+        prefs.edit()
+            .putString("rate:$key:normal", normal.toString())
+            .putString("rate:$key:extra", extra.toString())
+            .apply()
+    }
+
+    private fun showRatesDialog(year: Int, month: Int) {
+        val (currentNormal, currentExtra) = getMonthlyRates(year, month)
+        val context = this
+
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (16 * resources.displayMetrics.density).toInt()
+            setPadding(padding, padding, padding, 0)
+        }
+
+        val normalInput = EditText(context).apply {
+            hint = getString(R.string.normal_rate_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            if (currentNormal > 0.0) setText(formatRateInput(currentNormal))
+        }
+
+        val extraInput = EditText(context).apply {
+            hint = getString(R.string.extra_rate_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            if (currentExtra > 0.0) setText(formatRateInput(currentExtra))
+        }
+
+        layout.addView(normalInput)
+        layout.addView(extraInput)
+
+        val monthName = SimpleDateFormat("MMMM yyyy", Locale("es", "ES"))
+            .format(Calendar.getInstance().apply {
+                set(Calendar.YEAR, year)
+                set(Calendar.MONTH, month)
+                set(Calendar.DAY_OF_MONTH, 1)
+            }.time)
+            .replaceFirstChar { it.uppercase() }
+
+        AlertDialog.Builder(context)
+            .setTitle("Tarifas $monthName")
+            .setView(layout)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val normalRate = normalInput.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+                val extraRate = extraInput.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+                saveMonthlyRates(year, month, normalRate, extraRate)
+                populateDays()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun formatRateInput(value: Double): String = String.format(Locale.US, "%.2f", value)
+
+    private fun durationToHours(durationMillis: Long): Double = durationMillis / 3_600_000.0
+
+    private fun formatCurrency(value: Double): String {
+        val format = NumberFormat.getCurrencyInstance(Locale("es", "ES"))
+        return format.format(value)
     }
 
     private fun formatHM(minutes: Int): String {

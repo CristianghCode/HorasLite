@@ -39,7 +39,6 @@
                 android:text="▶" />
         </LinearLayout>
 
-
         <Button
             android:id="@+id/resetButton"
             android:layout_width="wrap_content"
@@ -61,6 +60,14 @@
             android:text="Resumen"
             android:textSize="16sp"
             android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/configureRatesButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/configure_month_rates" />
+
         <TextView
             android:id="@+id/monthlySummary"
             android:layout_width="match_parent"
@@ -70,7 +77,6 @@
             android:textSize="15sp"
             android:textStyle="bold"
             android:visibility="gone" />
-
 
     </LinearLayout>
 </ScrollView>
