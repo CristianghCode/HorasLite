@@ -17,8 +17,8 @@ android {
         applicationId = "com.horaslite.app"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1762412479
-        versionName = "1.0.7"
+        versionCode = 1762427452
+        versionName = "1.0.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -82,7 +82,7 @@ tasks.register("generateUpdateJson") {
     dependsOn("assembleRelease")
 
     doLast {
-        val versionCode = 1762412479
+        val versionCode = 1762427452
         val versionName = android.defaultConfig.versionName
         val apkFileName = "HorasLite-v${versionName}.apk"
 
