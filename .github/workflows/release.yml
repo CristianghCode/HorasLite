@@ -43,8 +43,10 @@ jobs:
           mkdir -p docs
           cp app/build/outputs/apk/release/horaslite-update.json docs/horaslite-update.json
 
-      - name: Commit and push JSON update
+      - name: Commit and push JSON update to master
         run: |
+          git fetch origin master:master
+          git checkout master
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
           git add docs/horaslite-update.json
@@ -52,6 +54,7 @@ jobs:
           git push origin master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
