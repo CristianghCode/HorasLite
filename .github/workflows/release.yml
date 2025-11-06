@@ -24,7 +24,8 @@ jobs:
 
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release-key.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release-key.jks
+
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -43,7 +44,7 @@ jobs:
 
       - name: Build signed release APK
         run: |
-          echo "storeFile=release-key.jks" > keystore.properties
+          echo "storeFile=app/release-key.jks" > keystore.properties
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> keystore.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
