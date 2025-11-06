@@ -22,10 +22,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
 import com.horaslite.app.databinding.ActivityMainBinding
-import com.google.android.material.datepicker.DayViewDecorator
-import com.google.android.material.datepicker.DayViewFacade
-import com.google.android.material.datepicker.MaterialDatePicker
-import com.google.android.material.datepicker.UtcDates
 import com.google.android.material.button.MaterialButton
 import com.prolificinteractive.materialcalendarview.CalendarDay
 import com.prolificinteractive.materialcalendarview.CalendarMode
@@ -40,6 +36,9 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.max
+import java.time.DayOfWeek
+import java.util.Calendar.*
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -93,6 +92,8 @@ class MainActivity : AppCompatActivity() {
         binding.weekLabel.setOnClickListener {
             showWeekPicker()
         }
+
+        Updater.checkForUpdates(this)
     }
 
     private fun refreshWeek() {
@@ -101,29 +102,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun currentWeekId(): String {
-        val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.add(Calendar.WEEK_OF_YEAR, weekOffset) // 👈 ESTA LÍNEA ES LA CLAVE
-        val year = cal.get(Calendar.YEAR)
-        val week = cal.get(Calendar.WEEK_OF_YEAR)
+        val cal = getInstance()
+        cal.firstDayOfWeek = MONDAY
+        cal.add(WEEK_OF_YEAR, weekOffset) // 👈 ESTA LÍNEA ES LA CLAVE
+        val year = cal.get(YEAR)
+        val week = cal.get(WEEK_OF_YEAR)
         return "$year-$week"
     }
 
     private fun currentWeekLabel(): String {
-        val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.add(Calendar.WEEK_OF_YEAR, weekOffset) // 👈 Aquí también
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        val cal = getInstance()
+        cal.firstDayOfWeek = MONDAY
+        cal.add(WEEK_OF_YEAR, weekOffset) // 👈 Aquí también
+        cal.set(DAY_OF_WEEK, MONDAY)
 
         val startCal = cal.clone() as Calendar
         val endCal = cal.clone() as Calendar
-        endCal.add(Calendar.DAY_OF_MONTH, 6)
+        endCal.add(DAY_OF_MONTH, 6)
 
         val df = SimpleDateFormat("dd MMM", Locale.getDefault())
         val start = df.format(startCal.time)
         val end = df.format(endCal.time)
-        val startYear = startCal.get(Calendar.YEAR)
-        val endYear = endCal.get(Calendar.YEAR)
+        val startYear = startCal.get(YEAR)
+        val endYear = endCal.get(YEAR)
 
         return if (startYear == endYear) {
             "Semana $start – $end $startYear"
@@ -133,14 +134,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun currentWeekStart(): Calendar {
-        val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.add(Calendar.WEEK_OF_YEAR, weekOffset)
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
-        cal.set(Calendar.MILLISECOND, 0)
+        val cal = getInstance()
+        cal.firstDayOfWeek = MONDAY
+        cal.add(WEEK_OF_YEAR, weekOffset)
+        cal.set(DAY_OF_WEEK, MONDAY)
+        cal.set(HOUR_OF_DAY, 0)
+        cal.set(MINUTE, 0)
+        cal.set(SECOND, 0)
+        cal.set(MILLISECOND, 0)
         return cal
     }
 
@@ -257,8 +258,8 @@ class MainActivity : AppCompatActivity() {
                 val now = System.currentTimeMillis()
                 if (getOngoingStartMillis(i) > 0L) {
                     // Stop -> close interval in minutes-of-day
-                    val cal = Calendar.getInstance()
-                    val endMinutes = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+                    val cal = getInstance()
+                    val endMinutes = cal.get(HOUR_OF_DAY) * 60 + cal.get(MINUTE)
                     val startMillis = getOngoingStartMillis(i)
                     setOngoingStartMillis(i, 0L)
 
@@ -321,76 +322,100 @@ class MainActivity : AppCompatActivity() {
 
     private fun showWeekPicker() {
         val highlights = collectDayHighlights()
-        val builder = MaterialDatePicker.Builder.datePicker()
-            .setTitleText(getString(R.string.select_day_title))
-            .setSelection(calendarToUtcMidnight(currentWeekStart()))
-            .setPositiveButtonText(getString(R.string.calendar_picker_confirm))
-            .setNegativeButtonText(getString(R.string.calendar_picker_cancel))
 
-        builder.setDayViewDecorator(object : DayViewDecorator() {
-            private lateinit var cachedHighlights: Map<Long, DayHighlight>
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.select_day_title))
+            .create()
 
-            override fun initialize(context: Context) {
-                cachedHighlights = highlights
-            }
+        val calendarView = MaterialCalendarView(this).apply {
+            state().edit()
+                .setFirstDayOfWeek(org.threeten.bp.DayOfWeek.MONDAY)
+                .setCalendarDisplayMode(CalendarMode.MONTHS)
+                .commit()
 
-            override fun decorate(dayView: DayViewFacade, date: Long) {
-                val canonical = UtcDates.canonicalYearMonthDay(date)
-                val info = cachedHighlights[canonical] ?: return
-                dayView.addSpan(StyleSpan(Typeface.BOLD))
-                if (info.hasExtra) {
-                    dayView.addSpan(BackgroundColorSpan(Color.parseColor("#FFF59D")))
-                    dayView.addSpan(ForegroundColorSpan(Color.parseColor("#000000")))
-                } else {
-                    dayView.addSpan(BackgroundColorSpan(Color.parseColor("#FFE0B2")))
-                    dayView.addSpan(ForegroundColorSpan(Color.parseColor("#3E2723")))
+            // Decorador de días con info de highlights
+            addDecorator(object : DayViewDecorator {
+                override fun shouldDecorate(day: CalendarDay?): Boolean {
+                    if (day == null) return false
+                    val cal = getInstance().apply {
+                        set(YEAR, day.year)
+                        set(MONTH, day.month - 1)
+                        set(DAY_OF_MONTH, day.day)
+                        set(HOUR_OF_DAY, 0)
+                        set(MINUTE, 0)
+                        set(SECOND, 0)
+                        set(MILLISECOND, 0)
+                    }
+                    val key = calendarToUtcMidnight(cal)
+                    return highlights.containsKey(key)
                 }
-            }
-        })
 
-        val picker = builder.build()
-        picker.addOnPositiveButtonClickListener { selection ->
-            selection?.let { millis ->
-                val targetCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                    timeInMillis = millis
+                override fun decorate(view: DayViewFacade?) {
+                    view ?: return
+                    view.addSpan(StyleSpan(Typeface.BOLD))
+                    view.addSpan(ForegroundColorSpan(Color.BLACK))
                 }
-                val localCal = Calendar.getInstance().apply {
-                    set(Calendar.YEAR, targetCal.get(Calendar.YEAR))
-                    set(Calendar.MONTH, targetCal.get(Calendar.MONTH))
-                    set(Calendar.DAY_OF_MONTH, targetCal.get(Calendar.DAY_OF_MONTH))
-                    set(Calendar.HOUR_OF_DAY, 0)
-                    set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                    firstDayOfWeek = Calendar.MONDAY
+            })
+
+            // Decorador especial para días con horas extra
+            addDecorator(object : DayViewDecorator {
+                override fun shouldDecorate(day: CalendarDay?): Boolean {
+                    if (day == null) return false
+                    val cal = getInstance().apply {
+                        set(YEAR, day.year)
+                        set(MONTH, day.month - 1)
+                        set(DAY_OF_MONTH, day.day)
+                        set(HOUR_OF_DAY, 0)
+                        set(MINUTE, 0)
+                        set(SECOND, 0)
+                        set(MILLISECOND, 0)
+                    }
+                    val key = calendarToUtcMidnight(cal)
+                    val info = highlights[key]
+                    return info?.hasExtra == true
                 }
-                val newOffset = calculateWeekOffset(localCal)
-                if (newOffset != weekOffset) {
-                    weekOffset = newOffset
-                    refreshWeek()
-                } else {
-                    refreshWeek()
+
+                override fun decorate(view: DayViewFacade?) {
+                    view ?: return
+                    view.addSpan(BackgroundColorSpan(Color.parseColor("#FFF59D"))) // Amarillo suave
+                    view.addSpan(ForegroundColorSpan(Color.parseColor("#000000")))
                 }
-            }
+            })
         }
-        picker.show(supportFragmentManager, "WeekPicker")
+
+        // Al seleccionar un día → calcular offset y refrescar semana
+        calendarView.setOnDateChangedListener { _, date, _ ->
+            val localCal = getInstance().apply {
+                set(YEAR, date.year)
+                set(MONTH, date.month - 1)
+                set(DAY_OF_MONTH, date.day)
+                firstDayOfWeek = MONDAY
+            }
+            val newOffset = calculateWeekOffset(localCal)
+            weekOffset = newOffset
+            refreshWeek()
+            dialog.dismiss()
+        }
+
+        dialog.setView(calendarView)
+        dialog.show()
     }
 
     private fun calculateWeekOffset(target: Calendar): Int {
-        val base = Calendar.getInstance().apply {
-            firstDayOfWeek = Calendar.MONDAY
-            set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+        val base = getInstance().apply {
+            firstDayOfWeek = MONDAY
+            set(DAY_OF_WEEK, MONDAY)
+            set(HOUR_OF_DAY, 0)
+            set(MINUTE, 0)
+            set(SECOND, 0)
+            set(MILLISECOND, 0)
         }
         val targetMonday = (target.clone() as Calendar).apply {
-            set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+            set(DAY_OF_WEEK, MONDAY)
+            set(HOUR_OF_DAY, 0)
+            set(MINUTE, 0)
+            set(SECOND, 0)
+            set(MILLISECOND, 0)
         }
         val diffMillis = targetMonday.timeInMillis - base.timeInMillis
         val weekMillis = 7L * 24 * 60 * 60 * 1000
@@ -399,31 +424,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateMonthlySummary() {
-        val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.add(Calendar.WEEK_OF_YEAR, weekOffset)
-        val targetYear = cal.get(Calendar.YEAR)
-        val targetMonth = cal.get(Calendar.MONTH)
+        val cal = getInstance()
+        cal.firstDayOfWeek = MONDAY
+        cal.add(WEEK_OF_YEAR, weekOffset)
+        val targetYear = cal.get(YEAR)
+        val targetMonth = cal.get(MONTH)
 
         var monthTotalMillis = 0L
         var monthExtrasMillis = 0L
 
         // Recorremos las semanas del mes
-        val tempCal = Calendar.getInstance()
-        tempCal.firstDayOfWeek = Calendar.MONDAY
-        tempCal.set(Calendar.YEAR, targetYear)
-        tempCal.set(Calendar.MONTH, targetMonth)
-        tempCal.set(Calendar.DAY_OF_MONTH, 1)
+        val tempCal = getInstance()
+        tempCal.firstDayOfWeek = MONDAY
+        tempCal.set(YEAR, targetYear)
+        tempCal.set(MONTH, targetMonth)
+        tempCal.set(DAY_OF_MONTH, 1)
 
         // Empezamos desde el lunes de la primera semana del mes
-        while (tempCal.get(Calendar.MONTH) == targetMonth) {
-            val weekId = "${tempCal.get(Calendar.YEAR)}-${tempCal.get(Calendar.WEEK_OF_YEAR)}"
+        while (tempCal.get(MONTH) == targetMonth) {
+            val weekId = "${tempCal.get(YEAR)}-${tempCal.get(WEEK_OF_YEAR)}"
 
             // Días de esa semana
             for (dayIndex in 0 until 7) {
                 val dayCal = tempCal.clone() as Calendar
-                dayCal.add(Calendar.DAY_OF_MONTH, dayIndex)
-                if (dayCal.get(Calendar.MONTH) != targetMonth) continue  // solo días del mes real
+                dayCal.add(DAY_OF_MONTH, dayIndex)
+                if (dayCal.get(MONTH) != targetMonth) continue  // solo días del mes real
 
                 val raw = prefs.getString("$weekId:intervals:$dayIndex", "[]") ?: continue
                 val arr = try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
@@ -449,7 +474,7 @@ class MainActivity : AppCompatActivity() {
 
 
             // Avanzamos a la siguiente semana
-            tempCal.add(Calendar.WEEK_OF_YEAR, 1)
+            tempCal.add(WEEK_OF_YEAR, 1)
         }
 
         val normalMillis = monthTotalMillis - monthExtrasMillis
@@ -532,11 +557,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun currentYearMonthForWeek(): Pair<Int, Int> {
-        val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.add(Calendar.WEEK_OF_YEAR, weekOffset)
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        return cal.get(Calendar.YEAR) to cal.get(Calendar.MONTH)
+        val cal = getInstance()
+        cal.firstDayOfWeek = MONDAY
+        cal.add(WEEK_OF_YEAR, weekOffset)
+        cal.set(DAY_OF_WEEK, MONDAY)
+        return cal.get(YEAR) to cal.get(MONTH)
     }
 
     private fun monthKey(year: Int, month: Int): String = String.format(Locale.US, "%04d-%02d", year, month + 1)
@@ -582,10 +607,10 @@ class MainActivity : AppCompatActivity() {
         layout.addView(extraInput)
 
         val monthName = SimpleDateFormat("MMMM yyyy", Locale("es", "ES"))
-            .format(Calendar.getInstance().apply {
-                set(Calendar.YEAR, year)
-                set(Calendar.MONTH, month)
-                set(Calendar.DAY_OF_MONTH, 1)
+            .format(getInstance().apply {
+                set(YEAR, year)
+                set(MONTH, month)
+                set(DAY_OF_MONTH, 1)
             }.time)
             .replaceFirstChar { it.uppercase() }
 
@@ -636,30 +661,30 @@ class MainActivity : AppCompatActivity() {
     private fun resetMonth() {
         val (targetYear, targetMonth) = currentYearMonthForWeek()
         val editor = prefs.edit()
-        val dayCal = Calendar.getInstance().apply {
-            firstDayOfWeek = Calendar.MONDAY
-            set(Calendar.YEAR, targetYear)
-            set(Calendar.MONTH, targetMonth)
-            set(Calendar.DAY_OF_MONTH, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+        val dayCal = getInstance().apply {
+            firstDayOfWeek = MONDAY
+            set(YEAR, targetYear)
+            set(MONTH, targetMonth)
+            set(DAY_OF_MONTH, 1)
+            set(HOUR_OF_DAY, 0)
+            set(MINUTE, 0)
+            set(SECOND, 0)
+            set(MILLISECOND, 0)
         }
 
-        while (dayCal.get(Calendar.MONTH) == targetMonth) {
+        while (dayCal.get(MONTH) == targetMonth) {
             val mondayCal = (dayCal.clone() as Calendar).apply {
-                set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
+                set(DAY_OF_WEEK, MONDAY)
+                set(HOUR_OF_DAY, 0)
+                set(MINUTE, 0)
+                set(SECOND, 0)
+                set(MILLISECOND, 0)
             }
             val diffDays = ((dayCal.timeInMillis - mondayCal.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
-            val weekId = "${dayCal.get(Calendar.YEAR)}-${dayCal.get(Calendar.WEEK_OF_YEAR)}"
+            val weekId = "${dayCal.get(YEAR)}-${dayCal.get(WEEK_OF_YEAR)}"
             editor.remove("$weekId:intervals:$diffDays")
             editor.remove("$weekId:ongoing:$diffDays")
-            dayCal.add(Calendar.DAY_OF_MONTH, 1)
+            dayCal.add(DAY_OF_MONTH, 1)
         }
 
         editor.apply()
@@ -702,16 +727,16 @@ class MainActivity : AppCompatActivity() {
             val autoExtra = max(0L, (totalMillis - manualExtraMillis) - 8 * 60 * 60 * 1000L)
             val hasExtra = manualExtraMillis > 0L || autoExtra > 0L
 
-            val cal = Calendar.getInstance().apply {
-                firstDayOfWeek = Calendar.MONDAY
-                set(Calendar.YEAR, year)
-                set(Calendar.WEEK_OF_YEAR, week)
-                set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-                add(Calendar.DAY_OF_MONTH, dayIndex)
+            val cal = getInstance().apply {
+                firstDayOfWeek = MONDAY
+                set(YEAR, year)
+                set(WEEK_OF_YEAR, week)
+                set(DAY_OF_WEEK, MONDAY)
+                set(HOUR_OF_DAY, 0)
+                set(MINUTE, 0)
+                set(SECOND, 0)
+                set(MILLISECOND, 0)
+                add(DAY_OF_MONTH, dayIndex)
             }
 
             val dayKey = calendarToUtcMidnight(cal)
@@ -727,17 +752,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun calendarToUtcMidnight(cal: Calendar): Long {
-        val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-            set(Calendar.YEAR, cal.get(Calendar.YEAR))
-            set(Calendar.MONTH, cal.get(Calendar.MONTH))
-            set(Calendar.DAY_OF_MONTH, cal.get(Calendar.DAY_OF_MONTH))
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+        val utc = getInstance(TimeZone.getTimeZone("UTC")).apply {
+            set(YEAR, cal.get(YEAR))
+            set(MONTH, cal.get(MONTH))
+            set(DAY_OF_MONTH, cal.get(DAY_OF_MONTH))
+            set(HOUR_OF_DAY, 0)
+            set(MINUTE, 0)
+            set(SECOND, 0)
+            set(MILLISECOND, 0)
         }
         return utc.timeInMillis
     }
+
+
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

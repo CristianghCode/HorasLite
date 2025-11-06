@@ -14,18 +14,29 @@ import java.net.URL
 
 object Updater {
 
-    private const val UPDATE_INFO_URL = "https://tu-url.com/horaslite-update.json" // cámbiala por la tuya
+    private const val UPDATE_INFO_URL =
+        "https://cristianghcode.github.io/HorasLite/horaslite-update.json"
 
-    fun checkForUpdate(context: Context) {
+    init {
+        Log.d("Updater", "Intentando conectar a: $UPDATE_INFO_URL")
+    }
+
+    fun checkForUpdates(context: Context) {
         Thread {
             try {
                 val text = URL(UPDATE_INFO_URL).readText()
                 val json = JSONObject(text)
+                Log.d("Updater", "JSON descargado: $json")
+
                 val remoteCode = json.getInt("versionCode")
                 val remoteName = json.getString("versionName")
+
                 val apkUrl = json.getString("apkUrl")
 
                 val localCode = BuildConfig.VERSION_CODE
+
+                Log.d("Updater", "Versión local: $localCode, versión remota: $remoteCode")
+
 
                 if (remoteCode > localCode) {
                     (context as AppCompatActivity).runOnUiThread {

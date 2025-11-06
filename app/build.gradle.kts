@@ -1,7 +1,5 @@
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
 import java.io.FileInputStream
-import java.util.Date
-import java.text.SimpleDateFormat
 import java.util.Properties
 
 plugins {
@@ -9,9 +7,33 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Source - https://stackoverflow.com/questions/18701932/how-can-i-retrieve-a-saved-keystore-password-from-android-studio
+// Posted by kunlinwang
+// Retrieved 2025-11-06, License - CC BY-SA 4.0
+
+afterEvaluate {
+    if (project.hasProperty("android.injected.signing.store.file")) {
+        // Correct: Use parentheses for the function call
+        println("key store path: ${project.property("android.injected.signing.store.file")}")
+    }
+    if (project.hasProperty("android.injected.signing.store.password")) {
+        // Correct: Use parentheses for the function call
+        println("key store password: ${project.property("android.injected.signing.store.password")}")
+    }
+    if (project.hasProperty("android.injected.signing.key.alias")) {
+        // Correct: Use parentheses for the function call
+        println("key alias: ${project.property("android.injected.signing.key.alias")}")
+    }
+    if (project.hasProperty("android.injected.signing.key.password")) {
+        // Correct: Use parentheses for the function call
+        println("key password: ${project.property("android.injected.signing.key.password")}")
+    }
+}
+
+
 android {
     namespace = "com.horaslite.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.horaslite.app"
@@ -51,15 +73,19 @@ android {
 
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+        // Add this line to enable the feature
+        isCoreLibraryDesugaringEnabled = true
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions { jvmTarget = "1.8" }
     buildFeatures {
         viewBinding = true
         buildConfig = true
     }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        resources.excludes.add("org/threeten/bp/format/ChronologyText.properties")
+    }
 
 
 
@@ -112,11 +138,16 @@ tasks.register("generateUpdateJson") {
 }
 
 
+
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
-    implementation("com.prolificinteractive:material-calendarview:2.0.1")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("com.google.firebase:protolite-well-known-types:18.0.1")
+    implementation("com.github.prolificinteractive:material-calendarview:2.0.1")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("com.jakewharton.threetenabp:threetenabp:1.4.6")
+// Or the latest version
+
 }
