@@ -3,9 +3,11 @@ name: Build, Sign and Publish HorasLite
 on:
   push:
     tags:
-      - 'v*'  # se ejecuta solo al hacer push de un tag tipo v1.1 o v2.0
+      - 'v*'  # Se ejecuta solo al hacer push de un tag tipo v1.1 o v2.0
+
 permissions:
   contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,6 +33,13 @@ jobs:
         run: |
           echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8" >> gradle.properties
 
+      - name: Update versionName and versionCode in Gradle
+        run: |
+          VERSION_NAME=${GITHUB_REF_NAME#v}
+          VERSION_CODE=$(date +%s)
+          echo "Setting versionName=$VERSION_NAME and versionCode=$VERSION_CODE"
+          sed -i "s/versionName = \".*\"/versionName = \"$VERSION_NAME\"/" app/build.gradle.kts
+          sed -i "s/versionCode = .*/versionCode = $VERSION_CODE/" app/build.gradle.kts
 
       - name: Build signed release APK
         run: |
@@ -49,18 +58,17 @@ jobs:
           mkdir -p docs
           cp app/build/outputs/apk/release/horaslite-update.json docs/horaslite-update.json
 
-      - name: Commit and push JSON update to master
+      - name: Commit and push Gradle + JSON updates to master
         run: |
           git fetch origin master:master
           git checkout master
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          git add docs/horaslite-update.json
-          git commit -m "Auto update JSON for $GITHUB_REF_NAME" || echo "No changes to commit"
-          git push origin master
+          git add app/build.gradle.kts docs/horaslite-update.json
+          git commit -m "Auto bump version to $GITHUB_REF_NAME and update JSON" || echo "No changes to commit"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2

@@ -1,4 +1,0 @@
-com.horaslite.app.test.app-androidTest-0 C:\Users\Metaenlace\Downloads\HorasLite\HorasLite\app\build\generated\res\resValues\androidTest\debug
-com.horaslite.app.test.app-mergeDebugAndroidTestResources-1 C:\Users\Metaenlace\Downloads\HorasLite\HorasLite\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
-com.horaslite.app.test.app-mergeDebugAndroidTestResources-2 C:\Users\Metaenlace\Downloads\HorasLite\HorasLite\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
-com.horaslite.app.test.app-debugAndroidTest-3 C:\Users\Metaenlace\Downloads\HorasLite\HorasLite\app\build\intermediates\merged_res\debugAndroidTest\mergeDebugAndroidTestResources
