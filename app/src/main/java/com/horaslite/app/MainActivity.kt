@@ -5,7 +5,6 @@ import android.app.TimePickerDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.text.style.BackgroundColorSpan
@@ -23,7 +22,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
 import com.horaslite.app.databinding.ActivityMainBinding
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.datepicker.DayViewDecorator
+import com.google.android.material.datepicker.DayViewFacade
+import com.google.android.material.datepicker.MaterialDatePicker
+import com.google.android.material.datepicker.UtcDates
 import com.google.android.material.button.MaterialButton
 import com.prolificinteractive.materialcalendarview.CalendarDay
 import com.prolificinteractive.materialcalendarview.CalendarMode
@@ -36,6 +38,7 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.max
 
 class MainActivity : AppCompatActivity() {
@@ -318,111 +321,59 @@ class MainActivity : AppCompatActivity() {
 
     private fun showWeekPicker() {
         val highlights = collectDayHighlights()
-        val extraDays = highlights.filterValues { it.hasExtra }.keys
-        val normalDays = highlights.filterValues { it.hasHours && !it.hasExtra }.keys
+        val builder = MaterialDatePicker.Builder.datePicker()
+            .setTitleText(getString(R.string.select_day_title))
+            .setSelection(calendarToUtcMidnight(currentWeekStart()))
+            .setPositiveButtonText(getString(R.string.calendar_picker_confirm))
+            .setNegativeButtonText(getString(R.string.calendar_picker_cancel))
 
-        val weekStart = currentWeekStart()
-        val calendarView = MaterialCalendarView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            state().edit()
-                .setFirstDayOfWeek(Calendar.MONDAY)
-                .setCalendarDisplayMode(CalendarMode.MONTHS)
-                .commit()
-            val currentDay = CalendarDay.from(weekStart)
-            setCurrentDate(currentDay)
-            setDateSelected(currentDay, true)
+        builder.setDayViewDecorator(object : DayViewDecorator() {
+            private lateinit var cachedHighlights: Map<Long, DayHighlight>
 
-            if (normalDays.isNotEmpty()) {
-                addDecorator(object : DayViewDecorator {
-                    private val days = normalDays.toSet()
-                    override fun shouldDecorate(day: CalendarDay): Boolean = days.contains(day)
-                    override fun decorate(view: DayViewFacade) {
-                        view.addSpan(StyleSpan(Typeface.BOLD))
-                        view.addSpan(BackgroundColorSpan(Color.parseColor("#FFE0B2")))
-                        view.addSpan(ForegroundColorSpan(Color.parseColor("#3E2723")))
-                    }
-                })
+            override fun initialize(context: Context) {
+                cachedHighlights = highlights
             }
 
-            if (extraDays.isNotEmpty()) {
-                addDecorator(object : DayViewDecorator {
-                    private val days = extraDays.toSet()
-                    override fun shouldDecorate(day: CalendarDay): Boolean = days.contains(day)
-                    override fun decorate(view: DayViewFacade) {
-                        view.addSpan(StyleSpan(Typeface.BOLD))
-                        view.addSpan(BackgroundColorSpan(Color.parseColor("#FFF59D")))
-                        view.addSpan(ForegroundColorSpan(Color.parseColor("#000000")))
-                    }
-                })
-            }
-        }
-
-        var selectedDay: CalendarDay? = calendarView.selectedDate ?: CalendarDay.from(weekStart)
-        calendarView.setOnDateChangedListener { _, date, selected ->
-            if (selected) {
-                selectedDay = date
-            }
-        }
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val padding = dp(16)
-            setPadding(padding, padding, padding, padding / 2)
-            addView(calendarView)
-
-            if (normalDays.isNotEmpty() || extraDays.isNotEmpty()) {
-                val legend = LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(0, padding, 0, 0)
+            override fun decorate(dayView: DayViewFacade, date: Long) {
+                val canonical = UtcDates.canonicalYearMonthDay(date)
+                val info = cachedHighlights[canonical] ?: return
+                dayView.addSpan(StyleSpan(Typeface.BOLD))
+                if (info.hasExtra) {
+                    dayView.addSpan(BackgroundColorSpan(Color.parseColor("#FFF59D")))
+                    dayView.addSpan(ForegroundColorSpan(Color.parseColor("#000000")))
+                } else {
+                    dayView.addSpan(BackgroundColorSpan(Color.parseColor("#FFE0B2")))
+                    dayView.addSpan(ForegroundColorSpan(Color.parseColor("#3E2723")))
                 }
-
-                if (normalDays.isNotEmpty()) {
-                    legend.addView(createLegendChip(
-                        getString(R.string.calendar_indicator_hours),
-                        Color.parseColor("#FFE0B2"),
-                        Color.parseColor("#3E2723")
-                    ))
-                }
-
-                if (extraDays.isNotEmpty()) {
-                    legend.addView(createLegendChip(
-                        getString(R.string.calendar_indicator_extra),
-                        Color.parseColor("#FFF59D"),
-                        Color.parseColor("#000000")
-                    ))
-                }
-
-                addView(legend)
             }
-        }
+        })
 
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.select_day_title)
-            .setView(container)
-            .setPositiveButton(R.string.calendar_picker_confirm) { _, _ ->
-                selectedDay?.let { day ->
-                    val localCal = Calendar.getInstance().apply {
-                        firstDayOfWeek = Calendar.MONDAY
-                        set(Calendar.YEAR, day.year)
-                        set(Calendar.MONTH, day.month - 1)
-                        set(Calendar.DAY_OF_MONTH, day.day)
-                        set(Calendar.HOUR_OF_DAY, 0)
-                        set(Calendar.MINUTE, 0)
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }
-                    val newOffset = calculateWeekOffset(localCal)
-                    if (newOffset != weekOffset) {
-                        weekOffset = newOffset
-                    }
+        val picker = builder.build()
+        picker.addOnPositiveButtonClickListener { selection ->
+            selection?.let { millis ->
+                val targetCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                    timeInMillis = millis
+                }
+                val localCal = Calendar.getInstance().apply {
+                    set(Calendar.YEAR, targetCal.get(Calendar.YEAR))
+                    set(Calendar.MONTH, targetCal.get(Calendar.MONTH))
+                    set(Calendar.DAY_OF_MONTH, targetCal.get(Calendar.DAY_OF_MONTH))
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                    firstDayOfWeek = Calendar.MONDAY
+                }
+                val newOffset = calculateWeekOffset(localCal)
+                if (newOffset != weekOffset) {
+                    weekOffset = newOffset
+                    refreshWeek()
+                } else {
                     refreshWeek()
                 }
             }
-            .setNegativeButton(R.string.calendar_picker_cancel, null)
-            .show()
+        }
+        picker.show(supportFragmentManager, "WeekPicker")
     }
 
     private fun calculateWeekOffset(target: Calendar): Int {
@@ -716,21 +667,8 @@ class MainActivity : AppCompatActivity() {
 
     private data class DayHighlight(val hasHours: Boolean, val hasExtra: Boolean)
 
-    private fun createLegendChip(text: String, backgroundColor: Int, textColor: Int): TextView {
-        return TextView(this).apply {
-            this.text = text
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(textColor)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(backgroundColor)
-            }
-        }
-    }
-
-    private fun collectDayHighlights(): Map<CalendarDay, DayHighlight> {
-        val result = mutableMapOf<CalendarDay, DayHighlight>()
+    private fun collectDayHighlights(): Map<Long, DayHighlight> {
+        val result = mutableMapOf<Long, DayHighlight>()
         val entries = prefs.all
         val regex = Regex("^(\\d{4})-(\\d{1,2}):intervals:(\\d)")
 
@@ -776,7 +714,7 @@ class MainActivity : AppCompatActivity() {
                 add(Calendar.DAY_OF_MONTH, dayIndex)
             }
 
-            val dayKey = CalendarDay.from(cal)
+            val dayKey = calendarToUtcMidnight(cal)
             val existing = result[dayKey]
             if (existing == null) {
                 result[dayKey] = DayHighlight(true, hasExtra)
@@ -786,6 +724,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         return result
+    }
+
+    private fun calendarToUtcMidnight(cal: Calendar): Long {
+        val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+            set(Calendar.YEAR, cal.get(Calendar.YEAR))
+            set(Calendar.MONTH, cal.get(Calendar.MONTH))
+            set(Calendar.DAY_OF_MONTH, cal.get(Calendar.DAY_OF_MONTH))
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return utc.timeInMillis
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
