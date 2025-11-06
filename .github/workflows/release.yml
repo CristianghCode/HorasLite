@@ -4,7 +4,8 @@ on:
   push:
     tags:
       - 'v*'  # se ejecuta solo al hacer push de un tag tipo v1.1 o v2.0
-
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
