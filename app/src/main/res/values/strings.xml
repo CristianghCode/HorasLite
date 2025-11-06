@@ -9,6 +9,14 @@
     <string name="total_week">Total semana:</string>
     <string name="extra_week">Extras semana:</string>
     <string name="normal_week">Normales semana:</string>
+    <string name="reset_month">Reiniciar mes ✨</string>
+    <string name="reset_month_confirm_title">¿Reiniciar el mes?</string>
+    <string name="reset_month_confirm_message">Se borrarán todas las horas guardadas del mes mostrado.</string>
+    <string name="select_day_title">Ir a un día concreto</string>
+    <string name="calendar_indicator_extra">Día con horas extra</string>
+    <string name="calendar_indicator_hours">Día con horas registradas</string>
+    <string name="calendar_picker_confirm">Elegir</string>
+    <string name="calendar_picker_cancel">Cancelar</string>
     <string name="configure_month_rates">Tarifas del mes</string>
     <string name="normal_rate_hint">Tarifa hora normal</string>
     <string name="extra_rate_hint">Tarifa hora extra</string>
