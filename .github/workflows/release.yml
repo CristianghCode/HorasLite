@@ -43,12 +43,17 @@ jobs:
 
       - name: Build signed release APK
         run: |
-          echo "storeFile=../release-key.jks" >> keystore.properties
+          echo "storeFile=release-key.jks" > keystore.properties
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> keystore.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
           
           ./gradlew clean assembleRelease
+
+      - name: Verify APK signature
+        run: |
+          echo "Verificando firma del APK..."
+          ${ANDROID_HOME}/build-tools/*/apksigner verify --verbose app/build/outputs/apk/release/*.apk
 
       - name: Generate update JSON
         run: ./gradlew generateUpdateJson
