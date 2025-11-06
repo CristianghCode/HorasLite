@@ -1,7 +1,9 @@
 <resources>
     <string name="app_name">Horas Lite</string>
-    <string name="start">Start</string>
-    <string name="stop">Stop</string>
+    <string name="start">Iniciar</string>
+    <string name="stop">Detener</string>
+    <string name="add_interval">Añadir intervalo</string>
+    <string name="delete_interval">Eliminar intervalo</string>
     <string name="edit">Editar</string>
     <string name="reset_week">Reiniciar semana 💪</string>
     <string name="total_week">Total semana:</string>

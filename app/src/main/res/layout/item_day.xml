@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -22,19 +23,28 @@
         android:weightSum="2"
         android:paddingTop="6dp">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/buttonAddInterval"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
             android:layout_weight="1"
-            android:text="Añadir intervalo" />
+            android:text="@string/add_interval"
+            app:cornerRadius="12dp"
+            app:icon="@drawable/ic_add_interval"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/buttonStartStop"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/start" />
+            android:text="@string/start"
+            app:cornerRadius="12dp"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp" />
     </LinearLayout>
 
     <LinearLayout
