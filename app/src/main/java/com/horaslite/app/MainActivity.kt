@@ -5,15 +5,19 @@ import android.app.TimePickerDialog
 import android.content.Context
 import android.os.Bundle
 import android.text.InputType
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.content.res.AppCompatResources
 import com.horaslite.app.databinding.ActivityMainBinding
+import com.google.android.material.button.MaterialButton
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
@@ -117,8 +121,10 @@ class MainActivity : AppCompatActivity() {
             val totalTime = item.findViewById<TextView>(R.id.totalTime)
             val extraAutoTime = item.findViewById<TextView>(R.id.extraAutoTime)
             val extraManualTime = item.findViewById<TextView>(R.id.extraManualTime)
-            val buttonAddInterval = item.findViewById<Button>(R.id.buttonAddInterval)
-            val buttonStartStop = item.findViewById<Button>(R.id.buttonStartStop)
+            val buttonAddInterval = item.findViewById<MaterialButton>(R.id.buttonAddInterval)
+            val buttonStartStop = item.findViewById<MaterialButton>(R.id.buttonStartStop)
+
+            buttonAddInterval.icon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
 
             dayName.text = dayNames[i]
 
@@ -137,9 +143,17 @@ class MainActivity : AppCompatActivity() {
                 dayTotalMillis += dur
                 if (extra) manualExtraMillis += dur
 
+                val intervalRow = LinearLayout(this)
+                intervalRow.orientation = LinearLayout.HORIZONTAL
+                intervalRow.setPadding(0, dp(4), 0, dp(4))
+                intervalRow.gravity = Gravity.CENTER_VERTICAL
+
                 val tv = TextView(this)
                 tv.text = intervalLabel(s, e, dur, extra)
-                tv.setPadding(8, 6, 8, 6)
+                tv.setBackgroundResource(R.drawable.bg_interval_chip)
+                val tvLayoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                tvLayoutParams.marginEnd = dp(8)
+                tv.layoutParams = tvLayoutParams
                 tv.setOnLongClickListener { v ->
                     // Toggle manual EXTRA flag
                     v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
@@ -152,12 +166,39 @@ class MainActivity : AppCompatActivity() {
                     true
                 }
                 tv.tag = it.toString()
-                intervalsContainer.addView(tv)
+
+                val deleteButton = ImageButton(this)
+                val typedValue = TypedValue()
+                theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, typedValue, true)
+                deleteButton.setBackgroundResource(typedValue.resourceId)
+                deleteButton.setImageDrawable(AppCompatResources.getDrawable(this, R.drawable.ic_delete_interval))
+                deleteButton.contentDescription = getString(R.string.delete_interval)
+                deleteButton.adjustViewBounds = true
+                deleteButton.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                val deleteParams = LinearLayout.LayoutParams(dp(36), dp(36))
+                deleteButton.layoutParams = deleteParams
+                deleteButton.setPadding(dp(6), dp(6), dp(6), dp(6))
+                val index = idx
+                deleteButton.setOnClickListener {
+                    intervals.remove(index)
+                    saveIntervals(i, intervals)
+                    populateDays()
+                }
+
+                intervalRow.addView(tv)
+                intervalRow.addView(deleteButton)
+                intervalsContainer.addView(intervalRow)
             }
 
             // Ongoing punch
             val ongoing = getOngoingStartMillis(i)
-            buttonStartStop.text = if (ongoing > 0L) getString(R.string.stop) else getString(R.string.start)
+            if (ongoing > 0L) {
+                buttonStartStop.text = getString(R.string.stop)
+                buttonStartStop.icon = AppCompatResources.getDrawable(this, R.drawable.ic_stop_circle)
+            } else {
+                buttonStartStop.text = getString(R.string.start)
+                buttonStartStop.icon = AppCompatResources.getDrawable(this, R.drawable.ic_play_circle)
+            }
             buttonStartStop.setOnClickListener {
                 val now = System.currentTimeMillis()
                 if (getOngoingStartMillis(i) > 0L) {
@@ -458,4 +499,6 @@ class MainActivity : AppCompatActivity() {
         }
         editor.apply()
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
