@@ -1,6 +1,7 @@
 package com.horaslite.app
 
 import android.app.AlertDialog
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
 import android.os.Bundle
@@ -22,6 +23,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.max
@@ -62,6 +67,10 @@ class MainActivity : AppCompatActivity() {
             weekOffset++
             refreshWeek()
         }
+
+        binding.datePickerButton.setOnClickListener {
+            showDatePicker()
+        }
     }
 
     private fun refreshWeek() {
@@ -83,11 +92,44 @@ class MainActivity : AppCompatActivity() {
         cal.firstDayOfWeek = Calendar.MONDAY
         cal.add(Calendar.WEEK_OF_YEAR, weekOffset) // 👈 Aquí también
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        val df = SimpleDateFormat("dd MMM", Locale.getDefault())
+        val df = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
         val start = df.format(cal.time)
         cal.add(Calendar.DAY_OF_MONTH, 6)
         val end = df.format(cal.time)
         return "Semana $start – $end"
+    }
+
+    private fun showDatePicker() {
+        val base = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+        }
+        val current = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+            add(Calendar.WEEK_OF_YEAR, weekOffset)
+        }
+
+        val dialog = DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                val selectedMonday = LocalDate.of(year, month + 1, dayOfMonth)
+                    .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+
+                val baseMonday = LocalDate.of(
+                    base.get(Calendar.YEAR),
+                    base.get(Calendar.MONTH) + 1,
+                    base.get(Calendar.DAY_OF_MONTH)
+                ).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+
+                weekOffset = ChronoUnit.WEEKS.between(baseMonday, selectedMonday).toInt()
+                refreshWeek()
+            },
+            current.get(Calendar.YEAR),
+            current.get(Calendar.MONTH),
+            current.get(Calendar.DAY_OF_MONTH)
+        )
+
+        dialog.datePicker.firstDayOfWeek = Calendar.MONDAY
+        dialog.show()
     }
 
     private fun key(prefix: String, dayIndex: Int) = "${currentWeekId()}:$prefix:$dayIndex"
