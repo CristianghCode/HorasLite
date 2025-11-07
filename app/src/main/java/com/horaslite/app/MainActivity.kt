@@ -1,6 +1,7 @@
 package com.horaslite.app
 
 import android.app.AlertDialog
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
 import android.os.Bundle
@@ -62,6 +63,10 @@ class MainActivity : AppCompatActivity() {
             weekOffset++
             refreshWeek()
         }
+
+        binding.datePickerButton.setOnClickListener {
+            showDatePicker()
+        }
     }
 
     private fun refreshWeek() {
@@ -83,11 +88,55 @@ class MainActivity : AppCompatActivity() {
         cal.firstDayOfWeek = Calendar.MONDAY
         cal.add(Calendar.WEEK_OF_YEAR, weekOffset) // 👈 Aquí también
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        val df = SimpleDateFormat("dd MMM", Locale.getDefault())
+        val df = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
         val start = df.format(cal.time)
         cal.add(Calendar.DAY_OF_MONTH, 6)
         val end = df.format(cal.time)
         return "Semana $start – $end"
+    }
+
+    private fun showDatePicker() {
+        val base = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+        }
+        val current = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+            add(Calendar.WEEK_OF_YEAR, weekOffset)
+        }
+
+        val dialog = DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                val selected = Calendar.getInstance().apply {
+                    firstDayOfWeek = Calendar.MONDAY
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    normalizeToStartOfDay()
+                    set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                }
+
+                val baseMonday = base.clone() as Calendar
+                baseMonday.normalizeToStartOfDay()
+                baseMonday.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+
+                val diffWeeks = ((selected.timeInMillis - baseMonday.timeInMillis) / (7 * 24 * 60 * 60 * 1000L)).toInt()
+                weekOffset = diffWeeks
+                refreshWeek()
+            },
+            current.get(Calendar.YEAR),
+            current.get(Calendar.MONTH),
+            current.get(Calendar.DAY_OF_MONTH)
+        )
+
+        dialog.show()
+    }
+
+    private fun Calendar.normalizeToStartOfDay() {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
     }
 
     private fun key(prefix: String, dayIndex: Int) = "${currentWeekId()}:$prefix:$dayIndex"
