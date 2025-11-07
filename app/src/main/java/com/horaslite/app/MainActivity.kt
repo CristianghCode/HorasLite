@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.weekLabel.text = currentWeekLabel()
         populateDays()
+        Updater.checkForUpdate(this)
         Toast.makeText(this, "💖 ¡Hola mamá! Tu semana empieza fuerte ☕", Toast.LENGTH_LONG).show()
 
 
