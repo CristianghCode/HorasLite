@@ -1,4 +1,5 @@
-// file: src/main/java/com/your/package/MyApplication.kt
+package com.horaslite.app
+
 import android.app.Application
 import com.jakewharton.threetenabp.AndroidThreeTen
 
