@@ -14,7 +14,12 @@ import java.net.URL
 
 object Updater {
 
-    private const val UPDATE_INFO_URL = "https://tu-url.com/horaslite-update.json" // cámbiala por la tuya
+    private const val UPDATE_INFO_URL =
+        "https://cristianghcode.github.io/HorasLite/horaslite-update.json"
+
+    init {
+        Log.d("Updater", "Intentando conectar a: $UPDATE_INFO_URL")
+    }
 
     fun checkForUpdate(context: Context) {
         Thread {
