@@ -313,48 +313,42 @@ class MainActivity : AppCompatActivity() {
         var monthTotalMillis = 0L
         var monthExtrasMillis = 0L
 
-        // Recorremos las semanas del mes
-        val tempCal = Calendar.getInstance()
-        tempCal.firstDayOfWeek = Calendar.MONDAY
-        tempCal.set(Calendar.YEAR, targetYear)
-        tempCal.set(Calendar.MONTH, targetMonth)
-        tempCal.set(Calendar.DAY_OF_MONTH, 1)
+        val monthCal = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+            set(Calendar.YEAR, targetYear)
+            set(Calendar.MONTH, targetMonth)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        val daysInMonth = monthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
 
-        // Empezamos desde el lunes de la primera semana del mes
-        while (tempCal.get(Calendar.MONTH) == targetMonth) {
-            val weekId = "${tempCal.get(Calendar.YEAR)}-${tempCal.get(Calendar.WEEK_OF_YEAR)}"
+        for (dayOfMonth in 1..daysInMonth) {
+            val dayCal = monthCal.clone() as Calendar
+            dayCal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
 
-            // Días de esa semana
-            for (dayIndex in 0 until 7) {
-                val dayCal = tempCal.clone() as Calendar
-                dayCal.add(Calendar.DAY_OF_MONTH, dayIndex)
-                if (dayCal.get(Calendar.MONTH) != targetMonth) continue  // solo días del mes real
+            val weekId = "${dayCal.get(Calendar.YEAR)}-${dayCal.get(Calendar.WEEK_OF_YEAR)}"
+            val dayOfWeek = dayCal.get(Calendar.DAY_OF_WEEK)
+            val dayIndex = (dayOfWeek + 5) % 7  // 0 = lunes, 6 = domingo
 
-                val raw = prefs.getString("$weekId:intervals:$dayIndex", "[]") ?: continue
-                val arr = try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
+            val raw = prefs.getString("$weekId:intervals:$dayIndex", "[]") ?: "[]"
+            val arr = try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
 
-                var dayTotalMillis = 0L
-                var manualExtraMillis = 0L
+            var dayTotalMillis = 0L
+            var manualExtraMillis = 0L
 
-                for (j in 0 until arr.length()) {
-                    val it = arr.getJSONObject(j)
-                    val s = it.optInt("s", 0)
-                    val e = it.optInt("e", 0)
-                    val extra = it.optBoolean("extra", false)
-                    val dur = max(0, e - s) * 60_000L
-                    dayTotalMillis += dur
-                    if (extra) manualExtraMillis += dur
-                }
-
-                val autoExtraMillis = max(0L, (dayTotalMillis - manualExtraMillis) - 8 * 60 * 60 * 1000L)
-
-                monthTotalMillis += dayTotalMillis
-                monthExtrasMillis += manualExtraMillis + autoExtraMillis
+            for (j in 0 until arr.length()) {
+                val it = arr.getJSONObject(j)
+                val s = it.optInt("s", 0)
+                val e = it.optInt("e", 0)
+                val extra = it.optBoolean("extra", false)
+                val dur = max(0, e - s) * 60_000L
+                dayTotalMillis += dur
+                if (extra) manualExtraMillis += dur
             }
 
+            val autoExtraMillis = max(0L, (dayTotalMillis - manualExtraMillis) - 8 * 60 * 60 * 1000L)
 
-            // Avanzamos a la siguiente semana
-            tempCal.add(Calendar.WEEK_OF_YEAR, 1)
+            monthTotalMillis += dayTotalMillis
+            monthExtrasMillis += manualExtraMillis + autoExtraMillis
         }
 
         val normalMillis = monthTotalMillis - monthExtrasMillis
