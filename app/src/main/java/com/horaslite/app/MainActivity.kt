@@ -162,6 +162,7 @@ class MainActivity : AppCompatActivity() {
             val buttonStartStop = item.findViewById<MaterialButton>(R.id.buttonStartStop)
 
             buttonAddInterval.icon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
+            buttonAddQuantity.icon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
 
             dayName.text = dayNames[i]
 
