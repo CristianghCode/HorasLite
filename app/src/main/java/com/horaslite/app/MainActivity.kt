@@ -20,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
 import com.horaslite.app.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.chip.Chip
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
@@ -157,12 +158,12 @@ class MainActivity : AppCompatActivity() {
             val totalTime = item.findViewById<TextView>(R.id.totalTime)
             val extraAutoTime = item.findViewById<TextView>(R.id.extraAutoTime)
             val extraManualTime = item.findViewById<TextView>(R.id.extraManualTime)
-            val buttonAddInterval = item.findViewById<MaterialButton>(R.id.buttonAddInterval)
-            val buttonAddQuantity = item.findViewById<MaterialButton>(R.id.buttonAddQuantity)
-            val buttonStartStop = item.findViewById<MaterialButton>(R.id.buttonStartStop)
+            val chipAddInterval = item.findViewById<Chip>(R.id.chipAddInterval)
+            val chipAddQuantity = item.findViewById<Chip>(R.id.chipAddQuantity)
+            val chipStartStop = item.findViewById<Chip>(R.id.chipStartStop)
 
-            buttonAddInterval.icon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
-            buttonAddQuantity.icon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
+            chipAddInterval.chipIcon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
+            chipAddQuantity.chipIcon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
 
             dayName.text = dayNames[i]
 
@@ -229,13 +230,15 @@ class MainActivity : AppCompatActivity() {
             // Ongoing punch
             val ongoing = getOngoingStartMillis(i)
             if (ongoing > 0L) {
-                buttonStartStop.text = getString(R.string.stop)
-                buttonStartStop.icon = AppCompatResources.getDrawable(this, R.drawable.ic_stop_circle)
+                chipStartStop.text = getString(R.string.stop)
+                chipStartStop.chipIcon = AppCompatResources.getDrawable(this, R.drawable.ic_stop_circle)
+                chipStartStop.contentDescription = getString(R.string.stop)
             } else {
-                buttonStartStop.text = getString(R.string.start)
-                buttonStartStop.icon = AppCompatResources.getDrawable(this, R.drawable.ic_play_circle)
+                chipStartStop.text = getString(R.string.start)
+                chipStartStop.chipIcon = AppCompatResources.getDrawable(this, R.drawable.ic_play_circle)
+                chipStartStop.contentDescription = getString(R.string.start)
             }
-            buttonStartStop.setOnClickListener {
+            chipStartStop.setOnClickListener {
                 val now = System.currentTimeMillis()
                 if (getOngoingStartMillis(i) > 0L) {
                     // Stop -> close interval in minutes-of-day
@@ -264,11 +267,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            buttonAddInterval.setOnClickListener {
+            chipAddInterval.setOnClickListener {
                 addManualIntervalDialog(i)
             }
 
-            buttonAddQuantity.setOnClickListener {
+            chipAddQuantity.setOnClickListener {
                 addQuantityDialog(i)
             }
 
