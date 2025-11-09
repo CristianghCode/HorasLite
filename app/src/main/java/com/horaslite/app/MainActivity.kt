@@ -6,8 +6,12 @@ import android.app.TimePickerDialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.Color
 import android.os.Bundle
@@ -24,6 +28,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.app.NotificationCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.horaslite.app.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
@@ -46,16 +51,18 @@ import android.os.Build
 import android.util.Patterns
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.AdaptiveIconDrawable
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import android.util.Log
+import com.horaslite.app.BuildConfig
 
 class MainActivity : AppCompatActivity() {
 
@@ -70,9 +77,7 @@ class MainActivity : AppCompatActivity() {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
 
-    private val reportIconBitmap: Bitmap by lazy {
-        BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
-    }
+    private val reportIconBitmap: Bitmap by lazy { loadReportIconBitmap() }
 
     private val reportChannelId = "monthly_report"
 
@@ -856,8 +861,23 @@ class MainActivity : AppCompatActivity() {
                     .setContentText(getString(R.string.report_notification_sending, email))
                 reportNotificationManager.notify(notificationId, builder.build())
 
-                withContext(Dispatchers.IO) {
-                    simulateEmailSending(email, file)
+                val delivered = withContext(Dispatchers.Main) {
+                    deliverReportByEmail(email, file, format, monthLabel)
+                }
+
+                if (!delivered) {
+                    val errorText = getString(R.string.report_notification_no_email_client)
+                    builder.setOngoing(false)
+                        .setProgress(0, 0, false)
+                        .setContentText(errorText)
+                        .setStyle(NotificationCompat.BigTextStyle().bigText(errorText))
+                    reportNotificationManager.notify(notificationId, builder.build())
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.report_toast_no_email_client),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
                 }
 
                 val doneMessage = getString(R.string.report_notification_done, email)
@@ -1028,9 +1048,79 @@ class MainActivity : AppCompatActivity() {
         return file
     }
 
-    private suspend fun simulateEmailSending(email: String, file: File) {
-        delay(1200)
-        Log.d("MainActivity", "Report ${file.name} sent to $email")
+    private fun deliverReportByEmail(
+        email: String,
+        file: File,
+        format: ReportFormat,
+        monthLabel: String
+    ): Boolean {
+        val authority = "${BuildConfig.APPLICATION_ID}.fileprovider"
+        val uri = FileProvider.getUriForFile(this, authority, file)
+        val mimeType = when (format) {
+            ReportFormat.PDF -> "application/pdf"
+            ReportFormat.CSV -> "text/csv"
+        }
+
+        val subject = getString(R.string.report_email_subject, monthLabel)
+        val body = getString(R.string.report_email_body, monthLabel)
+
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, body)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(contentResolver, file.name, uri)
+        }
+
+        return try {
+            val chooser = Intent.createChooser(
+                sendIntent,
+                getString(R.string.report_email_chooser_title)
+            ).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(chooser)
+            true
+        } catch (e: ActivityNotFoundException) {
+            false
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Unable to launch email client", e)
+            false
+        }
+    }
+
+    private fun loadReportIconBitmap(): Bitmap {
+        val drawable = AppCompatResources.getDrawable(this, R.mipmap.ic_launcher)
+            ?: throw IllegalStateException("App icon resource missing")
+        val desiredSize = (resources.displayMetrics.density * 96f).toInt().coerceAtLeast(72)
+
+        val baseBitmap = when {
+            drawable is BitmapDrawable && drawable.bitmap != null -> drawable.bitmap
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable is AdaptiveIconDrawable -> {
+                val bitmap = Bitmap.createBitmap(desiredSize, desiredSize, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                drawable.draw(canvas)
+                bitmap
+            }
+            else -> {
+                val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else desiredSize
+                val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else desiredSize
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                drawable.draw(canvas)
+                bitmap
+            }
+        }
+
+        return if (baseBitmap.width == desiredSize && baseBitmap.height == desiredSize) {
+            baseBitmap
+        } else {
+            Bitmap.createScaledBitmap(baseBitmap, desiredSize, desiredSize, true)
+        }
     }
 
     private fun formatHoursDecimal(millis: Long): String = String.format(Locale.US, "%.2f", durationToHours(millis))
