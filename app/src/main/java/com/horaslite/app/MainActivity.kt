@@ -508,6 +508,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun getMonthlyRates(year: Int, month: Int): Pair<Double, Double> {
         val key = monthKey(year, month)
+        // Keys intentionally unchanged so that previously stored month rates remain valid.
         val normal = prefs.getString("rate:$key:normal", null)?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
         val extra = prefs.getString("rate:$key:extra", null)?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
         return normal to extra
