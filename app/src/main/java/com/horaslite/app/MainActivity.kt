@@ -13,6 +13,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
