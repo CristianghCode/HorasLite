@@ -11,7 +11,6 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.Color
 import android.os.Bundle
@@ -62,6 +61,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.horaslite.app.BuildConfig
 
 class MainActivity : AppCompatActivity() {
@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val prefs by lazy { getSharedPreferences("HorasLite", Context.MODE_PRIVATE) }
     private val dayNames = arrayOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
+    @RequiresApi(Build.VERSION_CODES.O)
     private val pdfDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy", Locale("es", "ES"))
     private val csvDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
 
