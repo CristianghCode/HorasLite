@@ -3,6 +3,9 @@
     <string name="start">Iniciar</string>
     <string name="stop">Detener</string>
     <string name="add_interval">Añadir intervalo</string>
+    <string name="add_quantity">Añadir cantidad</string>
+    <string name="action_interval_short">Intervalo</string>
+    <string name="action_quantity_short">Cantidad</string>
     <string name="delete_interval">Eliminar intervalo</string>
     <string name="edit">Editar</string>
     <string name="reset_week">Reiniciar semana 💪</string>
@@ -14,4 +17,9 @@
     <string name="normal_rate_hint">Tarifa hora normal</string>
     <string name="extra_rate_hint">Tarifa hora extra</string>
     <string name="rates_hint_message">Configura las tarifas del mes para ver los ingresos.</string>
+    <string name="add_quantity_title">Añadir cantidad de horas</string>
+    <string name="quantity_hours_hint">Horas</string>
+    <string name="quantity_minutes_hint">Minutos</string>
+    <string name="quantity_invalid_minutes">Los minutos deben estar entre 0 y 59.</string>
+    <string name="quantity_invalid_total">Introduce una cantidad de tiempo mayor que cero.</string>
 </resources>
