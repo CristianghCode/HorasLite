@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity() {
 
     private enum class ReportFormat { PDF, CSV }
 
-    private data class DailyReport(
+    data class DailyReport(
         val date: LocalDate,
         val normalMillis: Long,
         val extraMillis: Long,
@@ -94,6 +94,8 @@ class MainActivity : AppCompatActivity() {
         val totalNormalMillis: Long,
         val totalExtraMillis: Long
     ) {
+        private fun durationToHours(durationMillis: Long): Double = durationMillis / 3_600_000.0
+
         val totalMillis: Long get() = totalNormalMillis + totalExtraMillis
         val normalPay: Double get() = durationToHours(totalNormalMillis) * normalRate
         val extraPay: Double get() = durationToHours(totalExtraMillis) * extraRate
