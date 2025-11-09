@@ -3,8 +3,13 @@ package com.horaslite.app
 import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Typeface
+import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
@@ -18,20 +23,39 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.app.NotificationCompat
+import androidx.lifecycle.lifecycleScope
 import com.horaslite.app.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.max
+import android.os.Build
+import android.util.Patterns
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
+import java.io.BufferedWriter
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStreamWriter
+import android.util.Log
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,11 +63,49 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val prefs by lazy { getSharedPreferences("HorasLite", Context.MODE_PRIVATE) }
     private val dayNames = arrayOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
+    private val pdfDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy", Locale("es", "ES"))
+    private val csvDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
+
+    private val reportNotificationManager: NotificationManager by lazy {
+        getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    }
+
+    private val reportIconBitmap: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher)
+    }
+
+    private val reportChannelId = "monthly_report"
+
+    private enum class ReportFormat { PDF, CSV }
+
+    private data class DailyReport(
+        val date: LocalDate,
+        val normalMillis: Long,
+        val extraMillis: Long,
+        val totalMillis: Long
+    )
+
+    private data class MonthlyReport(
+        val year: Int,
+        val month: Int,
+        val daily: List<DailyReport>,
+        val normalRate: Double,
+        val extraRate: Double,
+        val totalNormalMillis: Long,
+        val totalExtraMillis: Long
+    ) {
+        val totalMillis: Long get() = totalNormalMillis + totalExtraMillis
+        val normalPay: Double get() = durationToHours(totalNormalMillis) * normalRate
+        val extraPay: Double get() = durationToHours(totalExtraMillis) * extraRate
+        val totalPay: Double get() = normalPay + extraPay
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        createReportNotificationChannel()
 
         binding.weekLabel.text = currentWeekLabel()
         populateDays()
@@ -135,6 +197,32 @@ class MainActivity : AppCompatActivity() {
     }
     private fun saveIntervals(dayIndex: Int, arr: JSONArray) {
         prefs.edit().putString(key("intervals", dayIndex), arr.toString()).apply()
+    }
+
+    private fun getStoredIntervals(weekId: String, dayIndex: Int): JSONArray {
+        val raw = prefs.getString("$weekId:intervals:$dayIndex", "[]") ?: "[]"
+        return try {
+            JSONArray(raw)
+        } catch (_: Exception) {
+            JSONArray()
+        }
+    }
+
+    private fun calculateDayTotals(intervals: JSONArray): Triple<Long, Long, Long> {
+        var totalMillis = 0L
+        var manualExtraMillis = 0L
+
+        for (idx in 0 until intervals.length()) {
+            val obj = intervals.getJSONObject(idx)
+            val duration = intervalDurationMillis(obj)
+            totalMillis += duration
+            if (obj.optBoolean("extra", false)) {
+                manualExtraMillis += duration
+            }
+        }
+
+        val autoExtraMillis = max(0L, (totalMillis - manualExtraMillis) - 8 * 60 * 60 * 1000L)
+        return Triple(totalMillis, manualExtraMillis, autoExtraMillis)
     }
 
     private fun getOngoingStartMillis(dayIndex: Int): Long = prefs.getLong(key("ongoing", dayIndex), 0L)
@@ -335,38 +423,57 @@ class MainActivity : AppCompatActivity() {
         val container = binding.monthlySummaryContainer
         container.removeAllViews()
 
-        var added = 0
-        months.forEach { (year, month) ->
+        months.forEachIndexed { index, (year, month) ->
             val (normalRate, extraRate) = getMonthlyRates(year, month)
-            val summaryText = buildMonthlySummary(year, month, normalRate, extraRate)
-            if (summaryText != null) {
-                val textView = TextView(this)
-                val params = LinearLayout.LayoutParams(
+            val report = collectMonthlyReport(year, month, normalRate, extraRate)
+            val summaryText = buildMonthlySummary(report)
+            val monthLabel = formatMonthWithYear(year, month)
+
+            val monthLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                if (added > 0) {
-                    params.topMargin = dp(12)
+                ).also { params ->
+                    if (index > 0) {
+                        params.topMargin = dp(12)
+                    }
                 }
-                textView.layoutParams = params
-                textView.setPadding(0, 0, 0, 0)
-                textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                textView.setTypeface(textView.typeface, Typeface.BOLD)
-                textView.text = summaryText
-                container.addView(textView)
-                added++
             }
+
+            val summaryView = TextView(this).apply {
+                setPadding(0, 0, 0, 0)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setTypeface(typeface, Typeface.BOLD)
+                text = summaryText ?: if (report.totalMillis <= 0L) {
+                    getString(R.string.report_summary_no_data, monthLabel)
+                } else {
+                    getString(R.string.report_summary_missing_rates_with_month, monthLabel)
+                }
+            }
+            monthLayout.addView(summaryView)
+
+            val button = MaterialButton(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(8) }
+                text = getString(R.string.generate_report_button, monthLabel)
+                icon = AppCompatResources.getDrawable(this@MainActivity, R.drawable.ic_report)
+                iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+                iconPadding = dp(8)
+                isAllCaps = false
+                setOnClickListener { showGenerateReportDialog(year, month) }
+            }
+            monthLayout.addView(button)
+
+            container.addView(monthLayout)
         }
 
-        container.visibility = if (added > 0) View.VISIBLE else View.GONE
+        container.visibility = if (months.isNotEmpty()) View.VISIBLE else View.GONE
     }
 
-    private fun buildMonthlySummary(year: Int, month: Int, normalRate: Double, extraRate: Double): String? {
-        if (normalRate == 0.0 && extraRate == 0.0) return null
-
-        var monthTotalMillis = 0L
-        var monthExtrasMillis = 0L
-
+    private fun collectMonthlyReport(year: Int, month: Int, normalRate: Double, extraRate: Double): MonthlyReport {
         val monthCal = Calendar.getInstance().apply {
             firstDayOfWeek = Calendar.MONDAY
             set(Calendar.YEAR, year)
@@ -374,6 +481,10 @@ class MainActivity : AppCompatActivity() {
             set(Calendar.DAY_OF_MONTH, 1)
         }
         val daysInMonth = monthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+
+        val dailyReports = mutableListOf<DailyReport>()
+        var totalNormalMillis = 0L
+        var totalExtraMillis = 0L
 
         for (dayOfMonth in 1..daysInMonth) {
             val dayCal = monthCal.clone() as Calendar
@@ -383,48 +494,44 @@ class MainActivity : AppCompatActivity() {
             val dayOfWeek = dayCal.get(Calendar.DAY_OF_WEEK)
             val dayIndex = (dayOfWeek + 5) % 7
 
-            val raw = prefs.getString("$weekId:intervals:$dayIndex", "[]") ?: "[]"
-            val arr = try {
-                JSONArray(raw)
-            } catch (_: Exception) {
-                JSONArray()
-            }
+            val intervals = getStoredIntervals(weekId, dayIndex)
+            val (totalMillis, manualExtraMillis, autoExtraMillis) = calculateDayTotals(intervals)
+            val extraMillis = manualExtraMillis + autoExtraMillis
+            val normalMillis = totalMillis - extraMillis
 
-            var dayTotalMillis = 0L
-            var manualExtraMillis = 0L
+            val date = LocalDate.of(dayCal.get(Calendar.YEAR), dayCal.get(Calendar.MONTH) + 1, dayOfMonth)
+            dailyReports.add(DailyReport(date, normalMillis, extraMillis, totalMillis))
 
-            for (j in 0 until arr.length()) {
-                val it = arr.getJSONObject(j)
-                val dur = intervalDurationMillis(it)
-                val extra = it.optBoolean("extra", false)
-                dayTotalMillis += dur
-                if (extra) manualExtraMillis += dur
-            }
-
-            val autoExtraMillis = max(0L, (dayTotalMillis - manualExtraMillis) - 8 * 60 * 60 * 1000L)
-
-            monthTotalMillis += dayTotalMillis
-            monthExtrasMillis += manualExtraMillis + autoExtraMillis
+            totalNormalMillis += normalMillis
+            totalExtraMillis += extraMillis
         }
 
-        if (monthTotalMillis <= 0L) return null
+        return MonthlyReport(
+            year = year,
+            month = month,
+            daily = dailyReports,
+            normalRate = normalRate,
+            extraRate = extraRate,
+            totalNormalMillis = totalNormalMillis,
+            totalExtraMillis = totalExtraMillis
+        )
+    }
 
-        val normalMillis = monthTotalMillis - monthExtrasMillis
-        val normalPay = durationToHours(normalMillis) * normalRate
-        val extraPay = durationToHours(monthExtrasMillis) * extraRate
-        val totalPay = normalPay + extraPay
+    private fun buildMonthlySummary(report: MonthlyReport): String? {
+        if (report.totalMillis <= 0L) return null
+        if (report.normalRate == 0.0 && report.extraRate == 0.0) return null
 
-        val monthName = formatMonthName(year, month)
+        val monthName = formatMonthName(report.year, report.month)
         val mensajeCariñoso = when {
-            monthExtrasMillis > 0L -> "🫶 ¡Qué trabajadora, mamá!"
-            monthTotalMillis == 0L -> "💤 Descansa, te lo has ganado."
+            report.totalExtraMillis > 0L -> "🫶 ¡Qué trabajadora, mamá!"
+            report.totalMillis == 0L -> "💤 Descansa, te lo has ganado."
             else -> "🌼 Buen equilibrio, mamá."
         }
 
-        val paySummary = "Ingresos: normales ${formatCurrency(normalPay)}, extra ${formatCurrency(extraPay)} (total ${formatCurrency(totalPay)})"
+        val paySummary = "Ingresos: normales ${formatCurrency(report.normalPay)}, extra ${formatCurrency(report.extraPay)} (total ${formatCurrency(report.totalPay)})"
 
-        return "$monthName: ${formatDuration(normalMillis)} normales, " +
-                "${formatDuration(monthExtrasMillis)} extra (total ${formatDuration(monthTotalMillis)})\n" +
+        return "$monthName: ${formatDuration(report.totalNormalMillis)} normales, " +
+                "${formatDuration(report.totalExtraMillis)} extra (total ${formatDuration(report.totalMillis)})\n" +
                 "$paySummary\n" +
                 mensajeCariñoso
     }
@@ -664,6 +771,270 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showGenerateReportDialog(year: Int, month: Int) {
+        val view = layoutInflater.inflate(R.layout.dialog_generate_report, null)
+        val formatGroup = view.findViewById<android.widget.RadioGroup>(R.id.formatGroup)
+        val emailInputLayout = view.findViewById<TextInputLayout>(R.id.emailInputLayout)
+        val emailEditText = view.findViewById<TextInputEditText>(R.id.emailEditText)
+        formatGroup.check(R.id.formatPdf)
+
+        val monthLabel = formatMonthWithYear(year, month)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.report_dialog_title, monthLabel))
+            .setView(view)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.report_dialog_confirm, null)
+            .create()
+
+        dialog.setOnShowListener {
+            val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            positiveButton.setOnClickListener {
+                val selectedFormat = when (formatGroup.checkedRadioButtonId) {
+                    R.id.formatCsv -> ReportFormat.CSV
+                    else -> ReportFormat.PDF
+                }
+                val email = emailEditText.text?.toString()?.trim().orEmpty()
+                if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                    emailInputLayout.error = getString(R.string.report_dialog_error_email)
+                    return@setOnClickListener
+                }
+                emailInputLayout.error = null
+                dialog.dismiss()
+                startReportGeneration(year, month, selectedFormat, email)
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun startReportGeneration(year: Int, month: Int, format: ReportFormat, email: String) {
+        val notificationId = (System.currentTimeMillis() and 0xFFFFFF).toInt()
+        val monthLabel = formatMonthWithYear(year, month)
+        val builder = NotificationCompat.Builder(this, reportChannelId)
+            .setSmallIcon(R.drawable.ic_report)
+            .setContentTitle(getString(R.string.report_notification_title, monthLabel))
+            .setContentText(getString(R.string.report_notification_generating))
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setProgress(100, 0, true)
+
+        reportNotificationManager.notify(notificationId, builder.build())
+
+        lifecycleScope.launch {
+            try {
+                val (normalRate, extraRate) = getMonthlyRates(year, month)
+                val report = withContext(Dispatchers.Default) {
+                    collectMonthlyReport(year, month, normalRate, extraRate)
+                }
+
+                if (report.totalMillis <= 0L) {
+                    val message = getString(R.string.report_dialog_error_no_data, monthLabel)
+                    builder.setOngoing(false)
+                        .setProgress(0, 0, false)
+                        .setContentText(message)
+                        .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                    reportNotificationManager.notify(notificationId, builder.build())
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                builder.setProgress(100, 40, false)
+                    .setContentText(getString(R.string.report_notification_generating_file))
+                reportNotificationManager.notify(notificationId, builder.build())
+
+                val file = withContext(Dispatchers.IO) {
+                    when (format) {
+                        ReportFormat.PDF -> generatePdfReport(report)
+                        ReportFormat.CSV -> generateCsvReport(report)
+                    }
+                }
+
+                builder.setProgress(100, 80, false)
+                    .setContentText(getString(R.string.report_notification_sending, email))
+                reportNotificationManager.notify(notificationId, builder.build())
+
+                withContext(Dispatchers.IO) {
+                    simulateEmailSending(email, file)
+                }
+
+                val doneMessage = getString(R.string.report_notification_done, email)
+                builder.setOngoing(false)
+                    .setProgress(0, 0, false)
+                    .setContentText(doneMessage)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(doneMessage))
+                reportNotificationManager.notify(notificationId, builder.build())
+
+                Toast.makeText(this@MainActivity, getString(R.string.report_toast_sent, email), Toast.LENGTH_LONG).show()
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                Log.e("MainActivity", "Error generating report", t)
+                builder.setOngoing(false)
+                    .setProgress(0, 0, false)
+                    .setContentText(getString(R.string.report_notification_error))
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.report_notification_error)))
+                reportNotificationManager.notify(notificationId, builder.build())
+                Toast.makeText(this@MainActivity, getString(R.string.report_toast_error), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun generatePdfReport(report: MonthlyReport): File {
+        val reportsDir = File(getExternalFilesDir(null), "reports").apply { if (!exists()) mkdirs() }
+        val fileName = "HorasLite_${monthKey(report.year, report.month)}_${System.currentTimeMillis()}.pdf"
+        val file = File(reportsDir, fileName)
+
+        val workedDays = report.daily.filter { it.totalMillis > 0L }
+        val baseHeight = 842
+        val rowHeight = 28
+        val pageHeight = max(baseHeight, 260 + workedDays.size * rowHeight)
+
+        val document = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, pageHeight, 1).create()
+        val page = document.startPage(pageInfo)
+        val canvas = page.canvas
+
+        val titlePaint = Paint().apply {
+            color = Color.BLACK
+            textSize = 24f
+            isFakeBoldText = true
+        }
+        val subtitlePaint = Paint().apply {
+            color = Color.DKGRAY
+            textSize = 14f
+        }
+        val textPaint = Paint().apply {
+            color = Color.BLACK
+            textSize = 13f
+        }
+
+        val iconBitmap = Bitmap.createScaledBitmap(reportIconBitmap, 96, 96, true)
+        canvas.drawBitmap(iconBitmap, 40f, 40f, null)
+
+        val monthLabel = formatMonthWithYear(report.year, report.month)
+        canvas.drawText(getString(R.string.report_pdf_title, monthLabel), 160f, 90f, titlePaint)
+        canvas.drawText(
+            getString(
+                R.string.report_pdf_totals,
+                formatDuration(report.totalNormalMillis),
+                formatDuration(report.totalExtraMillis),
+                formatDuration(report.totalMillis)
+            ),
+            40f,
+            150f,
+            subtitlePaint
+        )
+        canvas.drawText(
+            getString(
+                R.string.report_pdf_pay_totals,
+                formatCurrency(report.normalPay),
+                formatCurrency(report.extraPay),
+                formatCurrency(report.totalPay)
+            ),
+            40f,
+            180f,
+            subtitlePaint
+        )
+
+        var currentY = 220f
+        val headerPaint = Paint(textPaint).apply { isFakeBoldText = true }
+        canvas.drawText(getString(R.string.report_pdf_daily_header), 40f, currentY, headerPaint)
+        currentY += 30f
+
+        if (workedDays.isEmpty()) {
+            canvas.drawText(getString(R.string.report_pdf_no_worked_days), 40f, currentY, textPaint)
+            currentY += 30f
+        } else {
+            val regularPaint = Paint(textPaint)
+            workedDays.forEach { day ->
+                val line = getString(
+                    R.string.report_pdf_daily_line,
+                    day.date.format(pdfDateFormatter),
+                    formatDuration(day.normalMillis),
+                    formatDuration(day.extraMillis),
+                    formatDuration(day.totalMillis)
+                )
+                canvas.drawText(line, 40f, currentY, regularPaint)
+                currentY += rowHeight
+            }
+        }
+
+        currentY += 20f
+        canvas.drawText(
+            getString(R.string.report_pdf_footer, LocalDate.now().format(pdfDateFormatter)),
+            40f,
+            currentY,
+            subtitlePaint
+        )
+
+        document.finishPage(page)
+        FileOutputStream(file).use { output ->
+            document.writeTo(output)
+        }
+        document.close()
+        if (iconBitmap != reportIconBitmap) {
+            iconBitmap.recycle()
+        }
+
+        return file
+    }
+
+    private fun generateCsvReport(report: MonthlyReport): File {
+        val reportsDir = File(getExternalFilesDir(null), "reports").apply { if (!exists()) mkdirs() }
+        val fileName = "HorasLite_${monthKey(report.year, report.month)}_${System.currentTimeMillis()}.csv"
+        val file = File(reportsDir, fileName)
+
+        val workedDays = report.daily.filter { it.totalMillis > 0L }
+
+        BufferedWriter(OutputStreamWriter(FileOutputStream(file), Charsets.UTF_8)).use { writer ->
+            writer.write(getString(R.string.report_csv_header))
+            writer.newLine()
+
+            workedDays.forEach { day ->
+                val normalPay = report.normalRate * durationToHours(day.normalMillis)
+                val extraPay = report.extraRate * durationToHours(day.extraMillis)
+                val totalPay = normalPay + extraPay
+                writer.write(
+                    listOf(
+                        day.date.format(csvDateFormatter),
+                        formatHoursDecimal(day.normalMillis),
+                        formatHoursDecimal(day.extraMillis),
+                        formatHoursDecimal(day.totalMillis),
+                        formatDecimal(normalPay),
+                        formatDecimal(extraPay),
+                        formatDecimal(totalPay)
+                    ).joinToString(";")
+                )
+                writer.newLine()
+            }
+
+            writer.newLine()
+            writer.write(
+                listOf(
+                    getString(R.string.report_csv_totals_label),
+                    formatHoursDecimal(report.totalNormalMillis),
+                    formatHoursDecimal(report.totalExtraMillis),
+                    formatHoursDecimal(report.totalMillis),
+                    formatDecimal(report.normalPay),
+                    formatDecimal(report.extraPay),
+                    formatDecimal(report.totalPay)
+                ).joinToString(";")
+            )
+            writer.newLine()
+        }
+
+        return file
+    }
+
+    private suspend fun simulateEmailSending(email: String, file: File) {
+        delay(1200)
+        Log.d("MainActivity", "Report ${file.name} sent to $email")
+    }
+
+    private fun formatHoursDecimal(millis: Long): String = String.format(Locale.US, "%.2f", durationToHours(millis))
+
+    private fun formatDecimal(value: Double): String = String.format(Locale.US, "%.2f", value)
+
     private fun formatRateInput(value: Double): String = String.format(Locale.US, "%.2f", value)
 
     private fun durationToHours(durationMillis: Long): Double = durationMillis / 3_600_000.0
@@ -696,4 +1067,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun createReportNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelName = getString(R.string.report_notification_channel_name)
+            val channelDescription = getString(R.string.report_notification_channel_desc)
+            val channel = NotificationChannel(reportChannelId, channelName, NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = channelDescription
+            }
+            reportNotificationManager.createNotificationChannel(channel)
+        }
+    }
 }
