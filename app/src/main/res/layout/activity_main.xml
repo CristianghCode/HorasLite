@@ -80,21 +80,19 @@
             android:textSize="16sp"
             android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/configureRatesButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/configure_month_rates" />
-
-        <TextView
-            android:id="@+id/monthlySummary"
+        <LinearLayout
+            android:id="@+id/configureRatesContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:id="@+id/monthlySummaryContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
             android:paddingTop="8dp"
-            android:text="Resumen mensual"
-            android:textSize="15sp"
-            android:textStyle="bold"
             android:visibility="gone" />
 
     </LinearLayout>

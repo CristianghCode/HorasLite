@@ -10,6 +10,7 @@
     <string name="extra_week">Extras semana:</string>
     <string name="normal_week">Normales semana:</string>
     <string name="configure_month_rates">Tarifas del mes</string>
+    <string name="configure_month_rates_for">Tarifas de %1$s</string>
     <string name="normal_rate_hint">Tarifa hora normal</string>
     <string name="extra_rate_hint">Tarifa hora extra</string>
     <string name="rates_hint_message">Configura las tarifas del mes para ver los ingresos.</string>

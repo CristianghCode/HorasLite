@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
@@ -52,11 +53,6 @@ class MainActivity : AppCompatActivity() {
         binding.resetButton.setOnClickListener {
             resetWeek()
             populateDays()
-        }
-
-        binding.configureRatesButton.setOnClickListener {
-            val (year, month) = currentYearMonthForWeek()
-            showRatesDialog(year, month)
         }
 
         binding.prevWeekButton.setOnClickListener {
@@ -150,7 +146,8 @@ class MainActivity : AppCompatActivity() {
         var weeklyManualExtra = 0L
         var weeklyAutoExtra = 0L
 
-        val (targetYear, targetMonth) = currentYearMonthForWeek()
+        val monthsInWeek = monthsInCurrentWeek()
+        val (targetYear, targetMonth) = monthsInWeek.first()
 
         for (i in 0 until 7) {
             val item = LayoutInflater.from(this).inflate(R.layout.item_day, container, false) as LinearLayout
@@ -299,24 +296,73 @@ class MainActivity : AppCompatActivity() {
                 "${getString(R.string.total_week)} ${formatDuration(weeklyTotal)}\n" +
                 weeklyPayText
 
-        updateMonthlySummary()
+        updateRatesButtons(monthsInWeek)
+        updateMonthlySummaries(monthsInWeek)
 
     }
 
-    private fun updateMonthlySummary() {
-        val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.add(Calendar.WEEK_OF_YEAR, weekOffset)
-        val targetYear = cal.get(Calendar.YEAR)
-        val targetMonth = cal.get(Calendar.MONTH)
+    private fun updateRatesButtons(months: List<Pair<Int, Int>>) {
+        val container = binding.configureRatesContainer
+        container.removeAllViews()
+
+        months.forEachIndexed { index, (year, month) ->
+            val button = MaterialButton(this)
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            if (index > 0) {
+                params.topMargin = dp(8)
+            }
+            button.layoutParams = params
+            button.text = getString(R.string.configure_month_rates_for, formatMonthWithYear(year, month))
+            button.setOnClickListener { showRatesDialog(year, month) }
+            container.addView(button)
+        }
+
+        container.visibility = if (months.isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun updateMonthlySummaries(months: List<Pair<Int, Int>>) {
+        val container = binding.monthlySummaryContainer
+        container.removeAllViews()
+
+        var added = 0
+        months.forEach { (year, month) ->
+            val (normalRate, extraRate) = getMonthlyRates(year, month)
+            val summaryText = buildMonthlySummary(year, month, normalRate, extraRate)
+            if (summaryText != null) {
+                val textView = TextView(this)
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                if (added > 0) {
+                    params.topMargin = dp(12)
+                }
+                textView.layoutParams = params
+                textView.setPadding(0, 0, 0, 0)
+                textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                textView.setTypeface(textView.typeface, Typeface.BOLD)
+                textView.text = summaryText
+                container.addView(textView)
+                added++
+            }
+        }
+
+        container.visibility = if (added > 0) View.VISIBLE else View.GONE
+    }
+
+    private fun buildMonthlySummary(year: Int, month: Int, normalRate: Double, extraRate: Double): String? {
+        if (normalRate == 0.0 && extraRate == 0.0) return null
 
         var monthTotalMillis = 0L
         var monthExtrasMillis = 0L
 
         val monthCal = Calendar.getInstance().apply {
             firstDayOfWeek = Calendar.MONDAY
-            set(Calendar.YEAR, targetYear)
-            set(Calendar.MONTH, targetMonth)
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month)
             set(Calendar.DAY_OF_MONTH, 1)
         }
         val daysInMonth = monthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
@@ -327,10 +373,14 @@ class MainActivity : AppCompatActivity() {
 
             val weekId = "${dayCal.get(Calendar.YEAR)}-${dayCal.get(Calendar.WEEK_OF_YEAR)}"
             val dayOfWeek = dayCal.get(Calendar.DAY_OF_WEEK)
-            val dayIndex = (dayOfWeek + 5) % 7  // 0 = lunes, 6 = domingo
+            val dayIndex = (dayOfWeek + 5) % 7
 
             val raw = prefs.getString("$weekId:intervals:$dayIndex", "[]") ?: "[]"
-            val arr = try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
+            val arr = try {
+                JSONArray(raw)
+            } catch (_: Exception) {
+                JSONArray()
+            }
 
             var dayTotalMillis = 0L
             var manualExtraMillis = 0L
@@ -351,42 +401,66 @@ class MainActivity : AppCompatActivity() {
             monthExtrasMillis += manualExtraMillis + autoExtraMillis
         }
 
+        if (monthTotalMillis <= 0L) return null
+
         val normalMillis = monthTotalMillis - monthExtrasMillis
-        val (normalRate, extraRate) = getMonthlyRates(targetYear, targetMonth)
         val normalPay = durationToHours(normalMillis) * normalRate
         val extraPay = durationToHours(monthExtrasMillis) * extraRate
         val totalPay = normalPay + extraPay
 
-        if (monthTotalMillis > 0) {
-            binding.monthlySummary.visibility = View.VISIBLE
-            val monthName = SimpleDateFormat("MMMM", Locale("es", "ES"))
-                .format(cal.time)
-                .replaceFirstChar { it.uppercase() }
-
-            val mensajeCariñoso = when {
-                monthExtrasMillis > 0L -> "🫶 ¡Qué trabajadora, mamá!"
-                monthTotalMillis == 0L -> "💤 Descansa, te lo has ganado."
-                else -> "🌼 Buen equilibrio, mamá."
-            }
-
-            val paySummary = if (normalRate == 0.0 && extraRate == 0.0) {
-                getString(R.string.rates_hint_message)
-            } else {
-                "Ingresos: normales ${formatCurrency(normalPay)}, extra ${formatCurrency(extraPay)} (total ${formatCurrency(totalPay)})"
-            }
-
-            binding.monthlySummary.text =
-                "$monthName: ${formatDuration(normalMillis)} normales, " +
-                        "${formatDuration(monthExtrasMillis)} extra (total ${formatDuration(monthTotalMillis)})\n" +
-                        "$paySummary\n" +
-                        mensajeCariñoso
-
-        } else {
-            binding.monthlySummary.visibility = View.GONE
+        val monthName = formatMonthName(year, month)
+        val mensajeCariñoso = when {
+            monthExtrasMillis > 0L -> "🫶 ¡Qué trabajadora, mamá!"
+            monthTotalMillis == 0L -> "💤 Descansa, te lo has ganado."
+            else -> "🌼 Buen equilibrio, mamá."
         }
+
+        val paySummary = "Ingresos: normales ${formatCurrency(normalPay)}, extra ${formatCurrency(extraPay)} (total ${formatCurrency(totalPay)})"
+
+        return "$monthName: ${formatDuration(normalMillis)} normales, " +
+                "${formatDuration(monthExtrasMillis)} extra (total ${formatDuration(monthTotalMillis)})\n" +
+                "$paySummary\n" +
+                mensajeCariñoso
     }
 
+    private fun monthsInCurrentWeek(): List<Pair<Int, Int>> {
+        val cal = Calendar.getInstance()
+        cal.firstDayOfWeek = Calendar.MONDAY
+        cal.add(Calendar.WEEK_OF_YEAR, weekOffset)
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
 
+        val months = mutableListOf<Pair<Int, Int>>()
+        for (i in 0 until 7) {
+            val monthPair = cal.get(Calendar.YEAR) to cal.get(Calendar.MONTH)
+            if (months.lastOrNull() != monthPair) {
+                months.add(monthPair)
+            }
+            cal.add(Calendar.DAY_OF_MONTH, 1)
+        }
+        return months
+    }
+
+    private fun formatMonthName(year: Int, month: Int): String {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        return SimpleDateFormat("MMMM", Locale("es", "ES"))
+            .format(cal.time)
+            .replaceFirstChar { it.uppercase() }
+    }
+
+    private fun formatMonthWithYear(year: Int, month: Int): String {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        return SimpleDateFormat("MMMM yyyy", Locale("es", "ES"))
+            .format(cal.time)
+            .replaceFirstChar { it.uppercase() }
+    }
 
     private fun intervalLabel(sMin: Int, eMin: Int, durMillis: Long, extra: Boolean): String {
         val s = formatHM(sMin)
@@ -430,18 +504,11 @@ class MainActivity : AppCompatActivity() {
         populateDays()
     }
 
-    private fun currentYearMonthForWeek(): Pair<Int, Int> {
-        val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.add(Calendar.WEEK_OF_YEAR, weekOffset)
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-        return cal.get(Calendar.YEAR) to cal.get(Calendar.MONTH)
-    }
-
     private fun monthKey(year: Int, month: Int): String = String.format(Locale.US, "%04d-%02d", year, month + 1)
 
     private fun getMonthlyRates(year: Int, month: Int): Pair<Double, Double> {
         val key = monthKey(year, month)
+        // Keys intentionally unchanged so that previously stored month rates remain valid.
         val normal = prefs.getString("rate:$key:normal", null)?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
         val extra = prefs.getString("rate:$key:extra", null)?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
         return normal to extra
@@ -480,13 +547,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(normalInput)
         layout.addView(extraInput)
 
-        val monthName = SimpleDateFormat("MMMM yyyy", Locale("es", "ES"))
-            .format(Calendar.getInstance().apply {
-                set(Calendar.YEAR, year)
-                set(Calendar.MONTH, month)
-                set(Calendar.DAY_OF_MONTH, 1)
-            }.time)
-            .replaceFirstChar { it.uppercase() }
+        val monthName = formatMonthWithYear(year, month)
 
         AlertDialog.Builder(context)
             .setTitle("Tarifas $monthName")
