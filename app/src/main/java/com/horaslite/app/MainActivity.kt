@@ -127,6 +127,7 @@ class MainActivity : AppCompatActivity() {
     private fun key(prefix: String, dayIndex: Int) = "${currentWeekId()}:$prefix:$dayIndex"
 
     // Intervals stored as JSON array per day: [{s:intMinutes, e:intMinutes, extra:boolean, src:"manual"|"punch"}]
+    // Quantity blocks: {type:"quantity", minutes:int, extra:boolean, src:"quantity"}
     private fun getIntervals(dayIndex: Int): JSONArray {
         val raw = prefs.getString(key("intervals", dayIndex), "[]") ?: "[]"
         return try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
@@ -157,6 +158,7 @@ class MainActivity : AppCompatActivity() {
             val extraAutoTime = item.findViewById<TextView>(R.id.extraAutoTime)
             val extraManualTime = item.findViewById<TextView>(R.id.extraManualTime)
             val buttonAddInterval = item.findViewById<MaterialButton>(R.id.buttonAddInterval)
+            val buttonAddQuantity = item.findViewById<MaterialButton>(R.id.buttonAddQuantity)
             val buttonStartStop = item.findViewById<MaterialButton>(R.id.buttonStartStop)
 
             buttonAddInterval.icon = AppCompatResources.getDrawable(this, R.drawable.ic_add_interval)
@@ -171,10 +173,8 @@ class MainActivity : AppCompatActivity() {
 
             for (idx in 0 until intervals.length()) {
                 val it = intervals.getJSONObject(idx)
-                val s = it.optInt("s", 0)
-                val e = it.optInt("e", 0)
+                val dur = intervalDurationMillis(it)
                 val extra = it.optBoolean("extra", false)
-                val dur = max(0, e - s) * 60_000L
                 dayTotalMillis += dur
                 if (extra) manualExtraMillis += dur
 
@@ -184,7 +184,7 @@ class MainActivity : AppCompatActivity() {
                 intervalRow.gravity = Gravity.CENTER_VERTICAL
 
                 val tv = TextView(this)
-                tv.text = intervalLabel(s, e, dur, extra)
+                tv.text = intervalLabel(it, dur)
                 tv.setBackgroundResource(R.drawable.bg_interval_chip)
                 val tvLayoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 tvLayoutParams.marginEnd = dp(8)
@@ -265,6 +265,10 @@ class MainActivity : AppCompatActivity() {
 
             buttonAddInterval.setOnClickListener {
                 addManualIntervalDialog(i)
+            }
+
+            buttonAddQuantity.setOnClickListener {
+                addQuantityDialog(i)
             }
 
             // Extras union rule: manual extra + auto extra computed on the remaining "normal" pool
@@ -387,10 +391,8 @@ class MainActivity : AppCompatActivity() {
 
             for (j in 0 until arr.length()) {
                 val it = arr.getJSONObject(j)
-                val s = it.optInt("s", 0)
-                val e = it.optInt("e", 0)
+                val dur = intervalDurationMillis(it)
                 val extra = it.optBoolean("extra", false)
-                val dur = max(0, e - s) * 60_000L
                 dayTotalMillis += dur
                 if (extra) manualExtraMillis += dur
             }
@@ -462,12 +464,28 @@ class MainActivity : AppCompatActivity() {
             .replaceFirstChar { it.uppercase() }
     }
 
-    private fun intervalLabel(sMin: Int, eMin: Int, durMillis: Long, extra: Boolean): String {
-        val s = formatHM(sMin)
-        val e = formatHM(eMin)
-        val d = formatDuration(durMillis)
+    private fun intervalDurationMillis(obj: JSONObject): Long {
+        return if (obj.optString("type") == "quantity") {
+            max(0, obj.optInt("minutes", 0)) * 60_000L
+        } else {
+            val s = obj.optInt("s", 0)
+            val e = obj.optInt("e", 0)
+            max(0, e - s) * 60_000L
+        }
+    }
+
+    private fun intervalLabel(obj: JSONObject, durMillis: Long): String {
+        val extra = obj.optBoolean("extra", false)
         val flag = if (extra) " [EXTRA]" else ""
-        return "$s - $e  ($d)$flag  (mantén pulsado para alternar EXTRA)"
+        val duration = formatDuration(durMillis)
+
+        return if (obj.optString("type") == "quantity") {
+            "Cantidad: $duration$flag  (mantén pulsado para alternar EXTRA)"
+        } else {
+            val s = formatHM(obj.optInt("s", 0))
+            val e = formatHM(obj.optInt("e", 0))
+            "$s - $e  ($duration)$flag  (mantén pulsado para alternar EXTRA)"
+        }
     }
 
     private fun addManualIntervalDialog(dayIndex: Int) {
@@ -492,6 +510,73 @@ class MainActivity : AppCompatActivity() {
         }, startMins / 60, startMins % 60, true).show()
     }
 
+    private fun addQuantityDialog(dayIndex: Int) {
+        val context = this
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = dp(16)
+            setPadding(padding, padding, padding, 0)
+        }
+
+        val hoursInput = EditText(context).apply {
+            hint = getString(R.string.quantity_hours_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val minutesInput = EditText(context).apply {
+            hint = getString(R.string.quantity_minutes_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(8)
+            }
+        }
+
+        layout.addView(hoursInput)
+        layout.addView(minutesInput)
+
+        val dialog = AlertDialog.Builder(context)
+            .setTitle(R.string.add_quantity_title)
+            .setView(layout)
+            .setPositiveButton(android.R.string.ok, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val hours = max(0, hoursInput.text.toString().trim().toIntOrNull() ?: 0)
+                val minutes = minutesInput.text.toString().trim().toIntOrNull() ?: 0
+
+                if (minutes < 0 || minutes >= 60) {
+                    Toast.makeText(context, getString(R.string.quantity_invalid_minutes), Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                val totalMinutes = hours * 60 + minutes
+                if (totalMinutes <= 0) {
+                    Toast.makeText(context, getString(R.string.quantity_invalid_total), Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                dialog.dismiss()
+                AlertDialog.Builder(context)
+                    .setTitle("¿Contar como horas EXTRA?")
+                    .setMessage("Puedes marcar esta cantidad como horas extra manualmente.")
+                    .setPositiveButton("Sí") { _, _ -> addQuantity(dayIndex, totalMinutes, true) }
+                    .setNegativeButton("No") { _, _ -> addQuantity(dayIndex, totalMinutes, false) }
+                    .show()
+            }
+        }
+
+        dialog.show()
+    }
+
     private fun addInterval(dayIndex: Int, start: Int, end: Int, extra: Boolean) {
         val arr = getIntervals(dayIndex)
         val obj = JSONObject()
@@ -499,6 +584,19 @@ class MainActivity : AppCompatActivity() {
         obj.put("e", end)
         obj.put("extra", extra)
         obj.put("src", "manual")
+        arr.put(obj)
+        saveIntervals(dayIndex, arr)
+        populateDays()
+    }
+
+    private fun addQuantity(dayIndex: Int, minutes: Int, extra: Boolean) {
+        if (minutes <= 0) return
+        val arr = getIntervals(dayIndex)
+        val obj = JSONObject()
+        obj.put("type", "quantity")
+        obj.put("minutes", minutes)
+        obj.put("extra", extra)
+        obj.put("src", "quantity")
         arr.put(obj)
         saveIntervals(dayIndex, arr)
         populateDays()
